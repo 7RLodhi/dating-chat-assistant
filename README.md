@@ -1,0 +1,225 @@
+# Chat Assist — v0 Validation Prototype
+
+A minimal web app implementing the v0 scope from `PRD_v0_Lean_Validation.md`:
+paste a conversation (or a match's profile info, or upload a screenshot of
+either), pick a tone and goal, optionally teach it your writing style, and
+get AI-generated message suggestions with copy + thumbs up/down feedback,
+plus a fake-door paywall to gauge willingness to pay. No overlay, no
+Accessibility Service, no native app — see the PRD docs one level up for why.
+
+## Stack
+- Next.js 14 (App Router) + TypeScript
+- Tailwind CSS
+- OpenAI **or** Anthropic (Claude) as the LLM provider — see `lib/llm.ts`.
+  Setting `ANTHROPIC_API_KEY` (and leaving `OPENAI_API_KEY` blank) auto-switches
+  providers, no code changes needed.
+- Supabase (Postgres) for persistent generation/feedback/waitlist logging,
+  with automatic fallback to local `.data/*.jsonl` files if not configured
+  (see `lib/store.ts`)
+
+## Setup
+
+```bash
+cd webapp
+npm install
+cp .env.example .env.local
+# then edit .env.local and set OPENAI_API_KEY
+npm run dev
+```
+
+Visit http://localhost:3000.
+
+Without Supabase configured, feedback/waitlist/generation records are
+appended to local `.data/*.jsonl` files, so the app works end-to-end with
+just an OpenAI key. Add Supabase (below) when you're ready to run a real
+test cohort or deploy somewhere serverless.
+
+**Testing without an OpenAI billing account:** set `OPENAI_BASE_URL` and
+point it at any OpenAI-compatible endpoint. [OpenRouter](https://openrouter.ai)
+offers free-tier models with no billing setup:
+```
+OPENAI_BASE_URL=https://openrouter.ai/api/v1/chat/completions
+OPENAI_API_KEY=<your OpenRouter key>
+OPENAI_MODEL=meta-llama/llama-3.1-8b-instruct:free
+```
+Suggestion quality will be lower than GPT-4-class models, but it's enough to
+test the full loop (generate → copy → vote → paywall) for free.
+
+## Environment Variables
+See `.env.example`:
+- **LLM provider — set one:**
+  - `OPENAI_API_KEY` (+ optional `OPENAI_MODEL`, default `gpt-4o-mini`; optional
+    `OPENAI_BASE_URL` to point at an OpenAI-compatible endpoint like OpenRouter), **or**
+  - `ANTHROPIC_API_KEY` (+ optional `ANTHROPIC_MODEL`, default `claude-haiku-4-5`)
+  - Setting only `ANTHROPIC_API_KEY` auto-switches the app to Claude — no other
+    config needed. To force a provider explicitly regardless of which keys are
+    set, use `LLM_PROVIDER=openai` or `LLM_PROVIDER=anthropic`. See
+    `lib/llm.ts` → `resolveProvider()` for the exact logic.
+- `NEXT_PUBLIC_POSTHOG_KEY` / `NEXT_PUBLIC_POSTHOG_HOST` — optional; without a
+  key, events just log to the browser console via `lib/analytics.ts`
+- `NEXT_PUBLIC_FREE_DAILY_LIMIT` — free suggestions per day before the fake
+  paywall shows (default 5)
+- `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` — optional; enables persistent
+  storage (see below). Server-side only, never `NEXT_PUBLIC_`.
+
+### Using Claude instead of OpenAI
+Anthropic doesn't have a "json_object" response mode like OpenAI, so the
+Anthropic path in `lib/llm.ts` uses **forced tool-calling**: the request
+includes a `return_suggestions` tool with an explicit JSON schema
+(`REPLY_JSON_SCHEMA` / `OPENER_JSON_SCHEMA` in `lib/prompts.ts`) and
+`tool_choice` forces the model to call it, so the response comes back as a
+ready-to-use structured object instead of free text to parse.
+
+## Supabase Setup (optional but recommended before a real test cohort)
+1. Create a free project at [supabase.com](https://supabase.com).
+2. In the Supabase dashboard, open the SQL editor and run the contents of
+   `supabase/schema.sql`. This creates `generations`, `feedback`, and
+   `waitlist` tables, plus a `feedback_with_context` view for analysis.
+3. Copy your project's `Project URL` and `service_role` key (Settings →
+   API — **not** the `anon` key) into `.env.local`:
+   ```
+   SUPABASE_URL=https://xxxx.supabase.co
+   SUPABASE_SERVICE_ROLE_KEY=eyJ...
+   ```
+4. Restart `npm run dev`. All new generations/feedback/waitlist entries now
+   write to Postgres instead of local files. No code changes needed — the
+   app auto-detects the env vars via `lib/supabase.ts`.
+5. RLS is enabled on all three tables with **no policies**, so the tables
+   are only reachable via the service role key from server-side API routes.
+   Never expose the service role key to the browser.
+
+### Useful analysis queries once you have real data
+```sql
+-- Thumbs-up rate by tone + goal
+select requested_tone, goal, vote, count(*)
+from feedback_with_context
+group by requested_tone, goal, vote
+order by requested_tone, goal, vote;
+
+-- Thumbs-up rate by detected mood
+select mood_label, vote, count(*)
+from feedback_with_context
+group by mood_label, vote;
+
+-- Does teaching it your writing style actually improve thumbs-up rate?
+select style_applied, vote, count(*)
+from feedback_with_context
+group by style_applied, vote;
+
+-- Does screenshot-sourced input perform differently than manual paste?
+select via_screenshot, vote, count(*)
+from feedback_with_context
+group by via_screenshot, vote;
+```
+
+## Project Structure
+```
+app/
+  page.tsx                -> renders the client app
+  layout.tsx              -> root layout, metadata
+  api/
+    suggest/route.ts      -> calls the LLM, mode: "reply" | "opener"
+    feedback/route.ts     -> logs thumbs up/down to .data/feedback.jsonl
+    waitlist/route.ts     -> logs fake-paywall emails to .data/waitlist.jsonl
+    style/route.ts        -> optional "what we noticed about your style" analysis
+    ocr/route.ts          -> transcribes an uploaded screenshot via vision LLM
+components/
+  AssistantApp.tsx        -> main UI + state
+  ToneSelector.tsx / GoalSelector.tsx
+  SuggestionCard.tsx      -> copy + vote per suggestion
+  MoodBadge.tsx           -> shows the conversation_read from the API
+  PaywallModal.tsx        -> fake-door pricing test
+  StylePanel.tsx          -> "teach your writing style" panel
+  ScreenshotUpload.tsx    -> screenshot -> transcribed text
+lib/
+  prompts.ts              -> system + user prompt templates (see v0_Prompt_Templates.md)
+  llm.ts                  -> OpenAI/Anthropic call wrapper + vision transcription
+  rateLimit.ts            -> client-side daily usage cap (localStorage)
+  analytics.ts            -> PostHog HTTP capture or console fallback
+  store.ts                -> persistence layer: Supabase if configured, else local JSONL
+  supabase.ts             -> server-only Supabase client (service role key)
+  devStore.ts             -> local JSONL append helper (fallback storage)
+  styleProfile.ts         -> client-side (localStorage) writing-style storage
+  types.ts                -> shared TS types
+supabase/
+  schema.sql              -> table definitions + RLS + analysis view
+```
+
+## Teaching it your writing style
+Open the "🎨 Your writing style" panel above the Generate button, paste 5–10
+messages you've actually sent before (from any conversation), and click
+**Save style**. From then on, every generation includes those examples as a
+voice reference — the model is instructed to match capitalization,
+punctuation, typical length, and emoji/slang habits *without* copying the
+examples verbatim (see the style-injection guardrail in `lib/prompts.ts` →
+`buildStyleSection`).
+
+Click **"What did you notice?"** for an optional, purely informational
+summary of the patterns detected (e.g. "lowercase, minimal punctuation,
+often ends with a question") — this is just for your own visibility and
+isn't required for style-matching to work; it makes one extra LLM call and
+caches the result locally.
+
+Style data is stored in `localStorage` only (same tier as the rate limiter —
+no accounts in v0), and `generations` rows log whether style was applied
+(`style_applied`) so you can compare 👍 rates with vs. without it.
+
+## Uploading or pasting a screenshot
+Two ways to get a screenshot in: click "📷 Upload or paste screenshot" next
+to either textarea, **or** just paste (Ctrl+V) an image anywhere on the
+page — no need to click into a specific field first. A page-wide paste
+listener (see the `useEffect` in `AssistantApp.tsx`) detects when the
+clipboard contains an image and routes it to whichever mode (reply/opener)
+is currently active; if the clipboard has no image, normal text pasting into
+whatever field you're focused in is unaffected.
+
+Both paths share the same upload logic (`lib/useScreenshotUpload.ts`), which
+reuses whichever LLM you've already configured for suggestions (GPT-4o-mini
+and Claude Haiku 4.5 both support vision) — no separate OCR vendor or API
+key needed. The transcribed text fills the textarea for you to **review and
+edit before generating**, since OCR can occasionally misread a word.
+
+Notes:
+- PNG/JPEG/WebP, up to 5MB.
+- Conversation screenshots are transcribed with `[USER]`/`[MATCH]` speaker
+  labels inferred from bubble alignment; profile screenshots are transcribed
+  as bio/prompt text instead (see `kind` in `lib/llm.ts`).
+- If you're testing via a free OpenRouter model per the section above, check
+  that the specific model supports image input — many free-tier models are
+  text-only, in which case this feature will return a clear error.
+- Analytics events tag whether a screenshot came from the button or a paste
+  (`source: "upload" | "paste"`), if you want to see which path testers
+  actually use.
+
+## Known v0 Limitations (intentional — see the PRD for rationale)
+- **Rate limiting is client-side only** (localStorage). Trivially bypassable.
+  Fine for a validation cohort; replace with a server-side counter
+  (Upstash Redis / Supabase row keyed by device or account ID) before
+  charging real money.
+- **No real billing.** The paywall is a "fake door" — clicking "Get early
+  access" just captures an email, it doesn't charge anyone.
+- **Database is optional, not required.** Without Supabase env vars, storage
+  falls back to local `.data/*.jsonl` files, which is fine for local dev but
+  **will not persist** on serverless hosts like Vercel across deploys/cold
+  starts. Set up Supabase (see above) before running a real test cohort.
+- **Text-only, manual paste.** No screenshot/OCR, no screen-reading. Users
+  copy conversation text in manually.
+
+## Deploying for a Test Cohort
+1. Set up Supabase per the section above (schema + env vars) so feedback and
+   waitlist data survive across deploys and cold starts.
+2. Set `OPENAI_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (and
+   optionally the PostHog vars) as environment variables on your host (e.g.,
+   Vercel project settings).
+3. Deploy (`vercel deploy` or connect the repo in the Vercel dashboard).
+4. Recruit testers per `PRD_v0_Lean_Validation.md` Section 7.
+5. Watch the metrics in Section 8 of that PRD: suggestion copy rate, 👍 rate,
+   7-day return rate, paywall click-through, waitlist signups — query them
+   directly from `generations`/`feedback_with_context`/`waitlist` in Supabase.
+
+## Next Steps After Validation
+If the v0 metrics hit their thresholds, carry over directly into the full
+build (`PRD_Dating_Chat_Overlay_Assistant.md`):
+- `lib/prompts.ts` tone/goal taxonomy and prompt structure
+- Whatever tone/goal combinations tested best (check feedback logs)
+- The waitlist as your first native-app beta cohort
