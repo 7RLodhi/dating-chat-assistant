@@ -22,6 +22,7 @@ import {
   getUsageToday,
   hasRemainingUsage,
   incrementUsage,
+  resetUsage,
 } from "@/lib/rateLimit";
 import { extractImageFromClipboard, useScreenshotUpload } from "@/lib/useScreenshotUpload";
 import { FactsResponse, Goal, Language, MatchFacts, Mode, SuggestResponse, Tone } from "@/lib/types";
@@ -284,6 +285,20 @@ export default function AssistantApp() {
     }
   }
 
+  function handleResetLimit() {
+    resetUsage();
+    setUsageToday(0);
+    setShowPaywall(false);
+    trackEvent("limit_reset");
+  }
+
+  function handleClearChat() {
+    persistRows([], false);
+    setResult(null);
+    setError(null);
+    trackEvent("chat_cleared");
+  }
+
   const remaining = Math.max(dailyLimit - usageToday, 0);
 
   return (
@@ -377,9 +392,19 @@ export default function AssistantApp() {
             {conversationUpload.error && (
               <p className="mt-1 text-xs text-red-600">{conversationUpload.error}</p>
             )}
-            <p className="mt-1 text-xs text-gray-400">
-              Tip: Copy a message, then tap They said / You said to paste it.
-            </p>
+            <div className="mt-1 flex items-center justify-between gap-2">
+              <p className="text-xs text-gray-400">
+                Tip: Copy a message, then tap They said / You said to paste it.
+              </p>
+              <button
+                type="button"
+                onClick={handleClearChat}
+                disabled={conversationRows.length === 0}
+                className="shrink-0 text-xs font-medium text-gray-400 hover:text-red-500 disabled:opacity-40"
+              >
+                Clear chat
+              </button>
+            </div>
           </div>
 
           <div>
@@ -424,11 +449,22 @@ export default function AssistantApp() {
             {loading ? "Thinking..." : "Generate reply suggestions"}
           </button>
 
-          <p className="text-center text-xs text-gray-400">
-            {remaining > 0
-              ? `${remaining} of ${dailyLimit} free suggestions left today`
-              : "Free limit reached for today"}
-          </p>
+          <div className="flex items-center justify-center gap-2 text-xs text-gray-400">
+            <span>
+              {remaining > 0
+                ? `${remaining} of ${dailyLimit} free suggestions left today`
+                : "Free limit reached for today"}
+            </span>
+            {remaining === 0 && (
+              <button
+                type="button"
+                onClick={handleResetLimit}
+                className="rounded-full border border-gray-300 px-2 py-0.5 font-medium text-gray-500 hover:border-brand-400 hover:text-brand-600"
+              >
+                Reset limit
+              </button>
+            )}
+          </div>
         </div>
       )}
 

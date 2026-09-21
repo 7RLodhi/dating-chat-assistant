@@ -52,3 +52,9 @@ export function incrementUsage(): number {
   writeRecord(next);
   return next.count;
 }
+
+export function resetUsage(): number {
+  const next = { date: todayKey(), count: 0 };
+  writeRecord(next);
+  return next.count;
+}

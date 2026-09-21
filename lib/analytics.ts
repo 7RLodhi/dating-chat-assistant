@@ -17,7 +17,9 @@ type EventName =
   | "style_saved"
   | "style_cleared"
   | "style_analyzed"
-  | "clipboard_pasted";
+  | "clipboard_pasted"
+  | "limit_reset"
+  | "chat_cleared";
 
 export function trackEvent(name: EventName, props: Record<string, unknown> = {}) {
   const key = process.env.NEXT_PUBLIC_POSTHOG_KEY;
