@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { trackEvent } from "@/lib/analytics";
 import { ConversationRow } from "@/lib/conversationRows";
 
@@ -66,10 +66,9 @@ export default function ConversationComposer({
                       They
                     </span>
                   )}
-                  <input
+                  <RowEditor
                     value={row.text}
-                    onChange={(e) => updateRowText(i, e.target.value)}
-                    className="min-w-0 flex-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-sm focus:border-brand-500 focus:outline-none"
+                    onChange={(text) => updateRowText(i, text)}
                   />
                   {!isMatch && (
                     <span className="shrink-0 rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-medium text-brand-700">
@@ -152,6 +151,29 @@ export default function ConversationComposer({
 
       {pasteError && <p className="text-xs text-red-600">{pasteError}</p>}
     </div>
+  );
+}
+
+// Auto-growing textarea so long messages wrap onto 2nd/3rd lines instead
+// of being cut off in a single-line input.
+function RowEditor({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [value]);
+
+  return (
+    <textarea
+      ref={ref}
+      rows={1}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="max-h-24 min-w-0 flex-1 resize-none overflow-y-auto rounded-md border border-gray-200 bg-white px-2 py-1 text-sm focus:border-brand-500 focus:outline-none"
+    />
   );
 }
 

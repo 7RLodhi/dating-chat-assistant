@@ -41,6 +41,7 @@ export default function AssistantApp() {
   const [factsRefreshing, setFactsRefreshing] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showPunDirectory, setShowPunDirectory] = useState(false);
+  const [pasteScreenshotError, setPasteScreenshotError] = useState<string | null>(null);
 
   const [bio, setBio] = useState("");
   const [conversationRows, setConversationRows] = useState<ConversationRow[]>([]);
@@ -140,6 +141,18 @@ export default function AssistantApp() {
       return;
     }
     chatScreenshotInputRef.current?.click();
+  }
+
+  // Explicit paste button: same clipboard-image path, but with a clear
+  // message instead of a file picker when there's nothing to paste.
+  async function handlePasteScreenshotClick() {
+    setPasteScreenshotError(null);
+    const clipboardContent = await readClipboardContent();
+    if (clipboardContent?.type === "image") {
+      conversationUpload.processFile(clipboardContent.file, "paste");
+      return;
+    }
+    setPasteScreenshotError("No screenshot in the clipboard — copy one first, then tap again.");
   }
 
   const dailyLimit = getDailyLimit();
@@ -402,7 +415,16 @@ export default function AssistantApp() {
             {conversationUpload.error && (
               <p className="mt-1 text-xs text-red-600">{conversationUpload.error}</p>
             )}
-            <div className="mt-2 flex justify-center">
+            <div className="mt-2 flex items-center justify-center gap-2">
+              <button
+                type="button"
+                onClick={handlePasteScreenshotClick}
+                disabled={conversationUpload.uploading}
+                title="Pastes the screenshot currently in your clipboard"
+                className="rounded-full border border-gray-300 bg-white px-4 py-1.5 text-xs font-medium text-gray-700 hover:border-brand-400 hover:text-brand-600 disabled:opacity-60"
+              >
+                📋 Paste Screenshot
+              </button>
               <input
                 ref={chatScreenshotInputRef}
                 type="file"
@@ -424,6 +446,9 @@ export default function AssistantApp() {
                 {conversationUpload.uploading ? "Reading screenshot…" : "📷 Upload Chat Screenshot"}
               </button>
             </div>
+            {pasteScreenshotError && (
+              <p className="mt-1 text-center text-xs text-red-600">{pasteScreenshotError}</p>
+            )}
           </div>
 
           <div>

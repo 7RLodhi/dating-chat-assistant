@@ -31,6 +31,10 @@ export function useScreenshotUpload(
       setError("Image too large (max 5MB). Try cropping the screenshot.");
       return;
     }
+    if (file.size === 0) {
+      setError("That image looks empty — copy the screenshot again and retry.");
+      return;
+    }
 
     setUploading(true);
     trackEvent("screenshot_uploaded", { sizeBytes: file.size, type: file.type, kind, source });
@@ -66,6 +70,10 @@ function fileToBase64(file: File): Promise<string> {
       const result = reader.result as string;
       // strip the "data:image/png;base64," prefix
       const base64 = result.split(",")[1] ?? "";
+      if (!base64) {
+        reject(new Error("Couldn't read that image — try saving it as a PNG or JPEG first."));
+        return;
+      }
       resolve(base64);
     };
     reader.onerror = () => reject(reader.error);
