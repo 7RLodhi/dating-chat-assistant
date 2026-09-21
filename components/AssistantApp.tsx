@@ -26,6 +26,7 @@ export default function AssistantApp() {
   const [matches, setMatches] = useState<Match[]>([]);
   const [activeMatchId, setActiveMatchId] = useState<string | null>(null);
   const [showNewMatchModal, setShowNewMatchModal] = useState(false);
+  const [showBio, setShowBio] = useState(false);
 
   const [bio, setBio] = useState("");
   const [conversationText, setConversationText] = useState("");
@@ -90,6 +91,8 @@ export default function AssistantApp() {
   effectiveModeRef.current = effectiveMode;
   const activeMatchIdRef = useRef(activeMatchId);
   activeMatchIdRef.current = activeMatchId;
+  const showNewMatchModalRef = useRef(showNewMatchModal);
+  showNewMatchModalRef.current = showNewMatchModal;
   const conversationUploadRef = useRef(conversationUpload);
   conversationUploadRef.current = conversationUpload;
   const profileUploadRef = useRef(profileUpload);
@@ -97,6 +100,7 @@ export default function AssistantApp() {
 
   useEffect(() => {
     function handlePaste(e: ClipboardEvent) {
+      if (showNewMatchModalRef.current) return; // the modal handles its own paste
       if (!activeMatchIdRef.current) return; // nowhere to put it yet
       const file = extractImageFromClipboard(e.clipboardData);
       if (!file) return; // no image in clipboard — let normal text paste happen
@@ -186,6 +190,7 @@ export default function AssistantApp() {
     setConversationText(match.conversationText);
     setResult(null);
     setError(null);
+    setShowBio(false);
   }
 
   function handleCreateMatch(name: string, matchBio: string) {
@@ -196,6 +201,7 @@ export default function AssistantApp() {
     setConversationText("");
     setResult(null);
     setError(null);
+    setShowBio(false);
     setShowNewMatchModal(false);
     runGenerate({ mode: "opener", profileText: matchBio, matchName: name });
   }
@@ -264,23 +270,32 @@ export default function AssistantApp() {
       ) : (
         <div className="space-y-5 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
           <div>
-            <div className="mb-1.5 flex items-center justify-between">
-              <label className="block text-sm font-medium text-gray-700">
+            <div className="flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => setShowBio((v) => !v)}
+                className="flex items-center gap-1 text-sm font-medium text-gray-700"
+              >
                 {activeMatch.name}'s bio
-              </label>
-              <ScreenshotUpload
-                uploading={profileUpload.uploading}
-                error={profileUpload.error}
-                onFileSelected={(file) => profileUpload.processFile(file, "upload")}
-              />
+                <span className="text-xs text-gray-400">{showBio ? "▲ Hide" : "▼ Show"}</span>
+              </button>
+              {showBio && (
+                <ScreenshotUpload
+                  uploading={profileUpload.uploading}
+                  error={profileUpload.error}
+                  onFileSelected={(file) => profileUpload.processFile(file, "upload")}
+                />
+              )}
             </div>
-            <textarea
-              value={bio}
-              onChange={(e) => handleBioChange(e.target.value)}
-              rows={3}
-              placeholder="Paste their bio, prompts/answers, or describe their photos"
-              className="w-full rounded-lg border border-gray-300 p-3 text-sm focus:border-brand-500 focus:outline-none"
-            />
+            {showBio && (
+              <textarea
+                value={bio}
+                onChange={(e) => handleBioChange(e.target.value)}
+                rows={3}
+                placeholder="Paste their bio, prompts/answers, or describe their photos"
+                className="mt-1.5 w-full rounded-lg border border-gray-300 p-3 text-sm focus:border-brand-500 focus:outline-none"
+              />
+            )}
           </div>
 
           <div>
@@ -331,11 +346,7 @@ export default function AssistantApp() {
             disabled={!canSubmit}
             className="w-full rounded-lg bg-brand-600 px-4 py-2.5 font-medium text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {loading
-              ? "Thinking..."
-              : effectiveMode === "reply"
-                ? "Get reply suggestions"
-                : "Get opening lines"}
+            {loading ? "Thinking..." : "Generate reply suggestions"}
           </button>
 
           <p className="text-center text-xs text-gray-400">
