@@ -1,0 +1,9 @@
+# Never bundle local dev data or secrets into deployments. Without this,
+// the CLI deploys .data/*.json (e.g. seed pun lists with random ids) and
+// production reads that stale snapshot instead of fresh seeds.
+.data
+.env
+.env.local
+.env.*.local
+node_modules
+.next
