@@ -56,26 +56,7 @@ export default function ConversationComposer({
   }
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between gap-2">
-        <button
-          type="button"
-          onClick={() => handlePasteClick("MATCH")}
-          disabled={pastingSpeaker !== null}
-          className="rounded-full border border-gray-300 bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:border-gray-400 disabled:opacity-60"
-        >
-          {pastingSpeaker === "MATCH" ? "Pasting…" : "📋 They said"}
-        </button>
-        <button
-          type="button"
-          onClick={() => handlePasteClick("USER")}
-          disabled={pastingSpeaker !== null}
-          className="rounded-full bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-60"
-        >
-          {pastingSpeaker === "USER" ? "Pasting…" : "You said 📋"}
-        </button>
-      </div>
-      {pasteError && <p className="text-xs text-red-600">{pasteError}</p>}
+    <div className="space-y-3">
       {rows.length > 0 && (
         <div className="max-h-56 space-y-1.5 overflow-y-auto rounded-lg border border-gray-200 bg-gray-50 p-2">
           {rows.map((row, i) => (
@@ -107,36 +88,60 @@ export default function ConversationComposer({
         </div>
       )}
 
-      <ComposeField
-        label="They said"
-        value={theirDraft}
-        onChange={setTheirDraft}
-        onSubmit={(text) => {
-          addRow("MATCH", text);
-          setTheirDraft("");
-        }}
-        screenshotUploading={screenshotUploading}
-        onScreenshotFile={onScreenshotFile}
-        onTextPasted={(text) => addRow("MATCH", text)}
-      />
-      <ComposeField
-        label="You said"
-        value={yourDraft}
-        onChange={setYourDraft}
-        onSubmit={(text) => {
-          addRow("USER", text);
-          setYourDraft("");
-        }}
-        screenshotUploading={screenshotUploading}
-        onScreenshotFile={onScreenshotFile}
-        onTextPasted={(text) => addRow("USER", text)}
-      />
+      <div className="space-y-1.5">
+        <ComposeField
+          value={theirDraft}
+          onChange={setTheirDraft}
+          onSubmit={(text) => {
+            addRow("MATCH", text);
+            setTheirDraft("");
+          }}
+          screenshotUploading={screenshotUploading}
+          onScreenshotFile={onScreenshotFile}
+          onTextPasted={(text) => addRow("MATCH", text)}
+        />
+        <div className="flex justify-start">
+          <button
+            type="button"
+            onClick={() => handlePasteClick("MATCH")}
+            disabled={pastingSpeaker !== null}
+            className="rounded-full border border-gray-300 bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:border-gray-400 disabled:opacity-60"
+          >
+            {pastingSpeaker === "MATCH" ? "Pasting…" : "📋 They said"}
+          </button>
+        </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <ComposeField
+          value={yourDraft}
+          onChange={setYourDraft}
+          onSubmit={(text) => {
+            addRow("USER", text);
+            setYourDraft("");
+          }}
+          screenshotUploading={screenshotUploading}
+          onScreenshotFile={onScreenshotFile}
+          onTextPasted={(text) => addRow("USER", text)}
+        />
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={() => handlePasteClick("USER")}
+            disabled={pastingSpeaker !== null}
+            className="rounded-full bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-60"
+          >
+            {pastingSpeaker === "USER" ? "Pasting…" : "You said 📋"}
+          </button>
+        </div>
+      </div>
+
+      {pasteError && <p className="text-xs text-red-600">{pasteError}</p>}
     </div>
   );
 }
 
 function ComposeField({
-  label,
   value,
   onChange,
   onSubmit,
@@ -144,7 +149,6 @@ function ComposeField({
   onScreenshotFile,
   onTextPasted,
 }: {
-  label: string;
   value: string;
   onChange: (v: string) => void;
   onSubmit: (v: string) => void;
@@ -153,28 +157,25 @@ function ComposeField({
   onTextPasted: (text: string) => void;
 }) {
   return (
-    <div className="flex items-center gap-2">
-      <span className="w-16 shrink-0 text-xs font-medium text-gray-500">{label}</span>
-      <div className="relative flex-1">
-        <input
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              onSubmit(value);
-            }
-          }}
-          placeholder="Type a message and press Enter…"
-          className="w-full rounded-md border border-gray-300 py-1.5 pl-2.5 pr-8 text-sm placeholder:italic placeholder:text-gray-400 focus:border-brand-500 focus:outline-none"
-        />
-        <ScreenshotIconButton
-          uploading={screenshotUploading}
-          onFileSelected={onScreenshotFile}
-          onTextSelected={onTextPasted}
-          className="absolute right-1 top-1/2 h-6 w-6 -translate-y-1/2"
-        />
-      </div>
+    <div className="relative">
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            onSubmit(value);
+          }
+        }}
+        placeholder="Type a message and press Enter…"
+        className="w-full rounded-md border border-gray-300 py-2 pl-3 pr-9 text-sm placeholder:italic placeholder:text-gray-400 focus:border-brand-500 focus:outline-none"
+      />
+      <ScreenshotIconButton
+        uploading={screenshotUploading}
+        onFileSelected={onScreenshotFile}
+        onTextSelected={onTextPasted}
+        className="absolute right-1.5 top-1/2 h-6 w-6 -translate-y-1/2"
+      />
     </div>
   );
 }
