@@ -10,11 +10,13 @@ export default function ConversationComposer({
   onRowsChange,
   screenshotUploading,
   onScreenshotFile,
+  onClearChat,
 }: {
   rows: ConversationRow[];
   onRowsChange: (rows: ConversationRow[]) => void;
   screenshotUploading: boolean;
   onScreenshotFile: (file: File) => void;
+  onClearChat: () => void;
 }) {
   const [theirDraft, setTheirDraft] = useState("");
   const [yourDraft, setYourDraft] = useState("");
@@ -88,6 +90,18 @@ export default function ConversationComposer({
         </div>
       )}
 
+      {rows.length > 0 && (
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={onClearChat}
+            className="text-xs font-medium text-red-500 hover:text-red-700"
+          >
+            Clear chat
+          </button>
+        </div>
+      )}
+
       <div className="w-3/4 space-y-1.5">
         <ComposeField
           value={theirDraft}
@@ -100,7 +114,7 @@ export default function ConversationComposer({
           onScreenshotFile={onScreenshotFile}
           onTextPasted={(text) => addRow("MATCH", text)}
         />
-        <div className="flex justify-start">
+        <div className="flex items-center justify-start gap-2">
           <button
             type="button"
             onClick={() => handlePasteClick("MATCH")}
@@ -109,6 +123,11 @@ export default function ConversationComposer({
           >
             {pastingSpeaker === "MATCH" ? "Pasting…" : "📋 They said"}
           </button>
+          {rows.length === 0 && pastingSpeaker === null && (
+            <span className="animate-bounce rounded-full bg-gray-900 px-2.5 py-1 text-[11px] font-medium text-white shadow">
+              👆 tap here to paste
+            </span>
+          )}
         </div>
       </div>
 

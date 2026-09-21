@@ -388,23 +388,14 @@ export default function AssistantApp() {
               onRowsChange={handleRowsChange}
               screenshotUploading={conversationUpload.uploading}
               onScreenshotFile={(file) => conversationUpload.processFile(file, "upload")}
+              onClearChat={handleClearChat}
             />
             {conversationUpload.error && (
               <p className="mt-1 text-xs text-red-600">{conversationUpload.error}</p>
             )}
-            <div className="mt-1 flex items-center justify-between gap-2">
-              <p className="text-xs text-gray-400">
-                Tip: Copy a message, then tap They said / You said to paste it.
-              </p>
-              <button
-                type="button"
-                onClick={handleClearChat}
-                disabled={conversationRows.length === 0}
-                className="shrink-0 text-xs font-medium text-gray-400 hover:text-red-500 disabled:opacity-40"
-              >
-                Clear chat
-              </button>
-            </div>
+            <p className="mt-1 text-xs text-gray-400">
+              Tip: Copy a message, then tap They said / You said to paste it.
+            </p>
           </div>
 
           <div>
