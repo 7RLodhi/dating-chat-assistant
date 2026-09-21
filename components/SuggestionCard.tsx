@@ -35,7 +35,13 @@ export default function SuggestionCard({
         <span className="rounded-full bg-brand-50 px-2 py-0.5 text-xs font-medium text-brand-700">
           {suggestion.tone.replace("_", " ")}
         </span>
-        <span className="text-xs text-gray-400">{suggestion.approach}</span>
+        {suggestion.approach.toLowerCase().includes("name pun") ? (
+          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+            🎯 name pun
+          </span>
+        ) : (
+          <span className="text-xs text-gray-400">{suggestion.approach}</span>
+        )}
       </div>
       <p className="text-[15px] leading-relaxed text-gray-900">{suggestion.text}</p>
       <div className="mt-3 flex items-center justify-between">

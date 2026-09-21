@@ -112,14 +112,20 @@ export function buildOpenerUserPrompt(params: {
   goal: Goal;
   styleExamples?: string;
   language?: Language;
+  /** A ready-to-adapt name-pun opener line, precomputed by buildNamePunPrompt — see route.ts. */
+  namePunHint?: string;
 }): string {
-  const { profileText, tone, goal, styleExamples, language = "auto" } = params;
+  const { profileText, tone, goal, styleExamples, language = "auto", namePunHint } = params;
   const openerLanguageNote =
     language === "auto"
       ? `${LANGUAGE_DESCRIPTIONS.auto} There's no conversation yet, so only the profile info below can give a signal (e.g. a bio written in Hindi/Hinglish) — otherwise default to English.`
       : LANGUAGE_DESCRIPTIONS[language];
+  const nameLine = namePunHint?.trim()
+    ? `NAME-PUN OPENER: "${namePunHint.trim()}"
+Include this EXACT line as one of the 5 suggestions, tagged with "approach": "name pun". You may only make minimal cosmetic tweaks (capitalization, punctuation, a word swapped for the selected language/tone if truly necessary) — do NOT rewrite it into a different joke or lose the specific wordplay it's built on.`
+    : "";
   return `Generate opening message suggestions for a dating app match.
-
+${nameLine}
 MATCH'S PROFILE INFO (as provided by the user; may be partial or empty):
 """
 ${profileText}
@@ -155,6 +161,38 @@ ${styleExamples}
 Use these ONLY to infer patterns — capitalization, punctuation, typical message length, emoji/slang habits — and apply those patterns to new, contextually relevant content. Do NOT copy phrases or sentences from these examples verbatim; they are a voice reference, not source material. This governs HOW the user writes; tone/goal above govern WHAT they say.
 `;
 }
+
+// ---------------------------------------------------------------------------
+// Name-pun detection (separate, focused call — see route.ts)
+// ---------------------------------------------------------------------------
+// Asking one model to both invent a name pun AND generate+tag 5 varied
+// openers in a single pass proved unreliable in testing — it kept tagging
+// generic jokes as "name pun" without the name actually appearing anywhere.
+// Splitting "does a pun exist for this name" into its own small, focused
+// call makes it far more reliable, at the cost of one extra request.
+
+export const NAME_PUN_SYSTEM_PROMPT = `You determine whether a genuinely clever, tasteful pun or wordplay exists for a given first name, based on how it sounds, is spelled, or a common meaning/association. Most names do NOT have a good natural pun — that's the normal, expected answer. Only say yes if you're confident it would land well and isn't a stretch.`;
+
+export function buildNamePunPrompt(name: string): string {
+  return `Name: "${name}"
+
+Is there a genuinely natural, tasteful pun or wordplay based on this specific name's sound, spelling, or common meaning? (e.g. for "Sunny": "you must be the reason it's so sunny today"; for "Autumn": "you're my favorite season"). The name itself must clearly appear or be played on — a generic joke that happens to be near the topic does not count.
+
+Return JSON:
+{
+  "has_pun": true or false,
+  "pun_line": "string — if has_pun is true, a short, natural, dating-app-appropriate opener line built around the pun. If has_pun is false, an empty string."
+}`;
+}
+
+export const NAME_PUN_JSON_SCHEMA = {
+  type: "object",
+  properties: {
+    has_pun: { type: "boolean" },
+    pun_line: { type: "string" },
+  },
+  required: ["has_pun", "pun_line"],
+};
 
 // ---------------------------------------------------------------------------
 // Style analysis (optional "what we noticed about your style" feature)

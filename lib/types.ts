@@ -46,6 +46,8 @@ export interface SuggestRequestBody {
   language?: Language;
   /** Whether the input text currently came from screenshot OCR rather than manual paste. */
   viaScreenshot?: boolean;
+  /** Match's name, mode "opener" only — enables an optional name-pun suggestion. */
+  matchName?: string;
 }
 
 export interface FeedbackRequestBody {

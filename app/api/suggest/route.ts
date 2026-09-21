@@ -2,9 +2,12 @@ import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { callLLMForJSON, describeModel, LLMError } from "@/lib/llm";
 import {
+  NAME_PUN_JSON_SCHEMA,
   OPENER_JSON_SCHEMA,
+  NAME_PUN_SYSTEM_PROMPT,
   REPLY_JSON_SCHEMA,
   SYSTEM_PROMPT,
+  buildNamePunPrompt,
   buildOpenerUserPrompt,
   buildReplyUserPrompt,
 } from "@/lib/prompts";
@@ -24,7 +27,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
   }
 
-  const { mode, tone, goal, extraContext, styleExamples, viaScreenshot } = body;
+  const { mode, tone, goal, extraContext, styleExamples, viaScreenshot, matchName } = body;
   const language: Language = body.language ?? "auto";
 
   if (mode !== "reply" && mode !== "opener") {
@@ -62,6 +65,26 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  let namePunHint: string | undefined;
+  if (mode === "opener" && matchName?.trim()) {
+    try {
+      const punResult = await callLLMForJSON<{ has_pun: boolean; pun_line: string }>({
+        systemPrompt: NAME_PUN_SYSTEM_PROMPT,
+        userPrompt: buildNamePunPrompt(matchName.trim()),
+        schema: NAME_PUN_JSON_SCHEMA,
+        temperature: 0.5,
+        maxTokens: 150,
+      });
+      if (punResult.has_pun && punResult.pun_line?.trim()) {
+        namePunHint = punResult.pun_line.trim();
+      }
+    } catch (err) {
+      // Non-fatal — just proceed without a name pun.
+      // eslint-disable-next-line no-console
+      console.error("name pun check failed, continuing without it:", err);
+    }
+  }
+
   const userPrompt =
     mode === "reply"
       ? buildReplyUserPrompt({
@@ -72,7 +95,7 @@ export async function POST(req: NextRequest) {
           styleExamples,
           language,
         })
-      : buildOpenerUserPrompt({ profileText: textField, tone, goal, styleExamples, language });
+      : buildOpenerUserPrompt({ profileText: textField, tone, goal, styleExamples, language, namePunHint });
 
   try {
     const result = await callLLMForJSON<SuggestResponse>({

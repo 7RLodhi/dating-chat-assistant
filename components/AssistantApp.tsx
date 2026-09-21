@@ -9,7 +9,10 @@ import SuggestionCard from "./SuggestionCard";
 import PaywallModal from "./PaywallModal";
 import StylePanel from "./StylePanel";
 import ScreenshotUpload from "./ScreenshotUpload";
+import MatchAvatar from "./MatchAvatar";
+import NewMatchModal from "./NewMatchModal";
 import { trackEvent } from "@/lib/analytics";
+import { Match, addMatch, getMatches, updateMatch } from "@/lib/matches";
 import {
   getDailyLimit,
   getUsageToday,
@@ -17,14 +20,15 @@ import {
   incrementUsage,
 } from "@/lib/rateLimit";
 import { extractImageFromClipboard, useScreenshotUpload } from "@/lib/useScreenshotUpload";
-import { Goal, Language, SuggestResponse, Tone } from "@/lib/types";
-
-type Mode = "reply" | "opener";
+import { Goal, Language, Mode, SuggestResponse, Tone } from "@/lib/types";
 
 export default function AssistantApp() {
-  const [mode, setMode] = useState<Mode>("reply");
+  const [matches, setMatches] = useState<Match[]>([]);
+  const [activeMatchId, setActiveMatchId] = useState<string | null>(null);
+  const [showNewMatchModal, setShowNewMatchModal] = useState(false);
+
+  const [bio, setBio] = useState("");
   const [conversationText, setConversationText] = useState("");
-  const [profileText, setProfileText] = useState("");
   const [extraContext, setExtraContext] = useState("");
   const [tone, setTone] = useState<Tone>("witty");
   const [goal, setGoal] = useState<Goal>("get_a_reply");
@@ -39,25 +43,53 @@ export default function AssistantApp() {
   const [usageToday, setUsageToday] = useState(0);
   const [showPaywall, setShowPaywall] = useState(false);
 
+  const activeMatch = matches.find((m) => m.id === activeMatchId) ?? null;
+  // No conversation yet -> opener mode (using their bio). Once there's an
+  // actual back-and-forth pasted in, switch to reply mode automatically —
+  // this replaces the old manual mode tabs.
+  const effectiveMode: Mode = conversationText.trim() ? "reply" : "opener";
+
   useEffect(() => {
     setUsageToday(getUsageToday());
+    const loaded = getMatches();
+    setMatches(loaded);
+    if (loaded.length > 0) {
+      const mostRecent = loaded[loaded.length - 1];
+      setActiveMatchId(mostRecent.id);
+      setBio(mostRecent.bio);
+      setConversationText(mostRecent.conversationText);
+    }
   }, []);
 
+  function handleBioChange(value: string) {
+    setBio(value);
+    setViaScreenshot(false);
+    if (activeMatchId) updateMatch(activeMatchId, { bio: value });
+  }
+
+  function handleConversationChange(value: string) {
+    setConversationText(value);
+    setViaScreenshot(false);
+    if (activeMatchId) updateMatch(activeMatchId, { conversationText: value });
+  }
+
   const conversationUpload = useScreenshotUpload((text) => {
-    setConversationText(text);
+    handleConversationChange(text);
     setViaScreenshot(true);
   }, "conversation");
 
   const profileUpload = useScreenshotUpload((text) => {
-    setProfileText(text);
+    handleBioChange(text);
     setViaScreenshot(true);
   }, "profile");
 
   // Lets you paste (Ctrl+V) a screenshot anywhere on the page, not just while
-  // focused in a specific textarea — routed to whichever mode is active.
-  // Refs avoid re-subscribing the listener on every keystroke re-render.
-  const modeRef = useRef(mode);
-  modeRef.current = mode;
+  // focused in a specific textarea — routed based on effective mode. Refs
+  // avoid re-subscribing the listener on every keystroke re-render.
+  const effectiveModeRef = useRef(effectiveMode);
+  effectiveModeRef.current = effectiveMode;
+  const activeMatchIdRef = useRef(activeMatchId);
+  activeMatchIdRef.current = activeMatchId;
   const conversationUploadRef = useRef(conversationUpload);
   conversationUploadRef.current = conversationUpload;
   const profileUploadRef = useRef(profileUpload);
@@ -65,10 +97,11 @@ export default function AssistantApp() {
 
   useEffect(() => {
     function handlePaste(e: ClipboardEvent) {
+      if (!activeMatchIdRef.current) return; // nowhere to put it yet
       const file = extractImageFromClipboard(e.clipboardData);
       if (!file) return; // no image in clipboard — let normal text paste happen
       e.preventDefault();
-      if (modeRef.current === "reply") {
+      if (effectiveModeRef.current === "reply") {
         conversationUploadRef.current.processFile(file, "paste");
       } else {
         profileUploadRef.current.processFile(file, "paste");
@@ -79,11 +112,17 @@ export default function AssistantApp() {
   }, []);
 
   const dailyLimit = getDailyLimit();
-  const inputText = mode === "reply" ? conversationText : profileText;
-  const canSubmit = inputText.trim().length > 0 && !loading;
+  const inputText = effectiveMode === "reply" ? conversationText : bio;
+  const canSubmit = Boolean(activeMatch) && inputText.trim().length > 0 && !loading;
 
-  async function handleGenerate() {
-    if (!inputText.trim()) return;
+  async function runGenerate(params: {
+    mode: Mode;
+    conversationText?: string;
+    profileText?: string;
+    matchName?: string;
+  }) {
+    const text = params.mode === "reply" ? params.conversationText : params.profileText;
+    if (!text || !text.trim()) return;
 
     if (!hasRemainingUsage()) {
       setShowPaywall(true);
@@ -94,16 +133,17 @@ export default function AssistantApp() {
     setLoading(true);
     setError(null);
     setResult(null);
-    trackEvent("generate_requested", { mode, tone, goal, language });
+    trackEvent("generate_requested", { mode: params.mode, tone, goal, language });
 
     try {
       const res = await fetch("/api/suggest", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          mode,
-          conversationText: mode === "reply" ? conversationText : undefined,
-          profileText: mode === "opener" ? profileText : undefined,
+          mode: params.mode,
+          conversationText: params.mode === "reply" ? params.conversationText : undefined,
+          profileText: params.mode === "opener" ? params.profileText : undefined,
+          matchName: params.mode === "opener" ? params.matchName : undefined,
           extraContext,
           tone,
           goal,
@@ -121,14 +161,43 @@ export default function AssistantApp() {
       setResult(data as SuggestResponse);
       const newCount = incrementUsage();
       setUsageToday(newCount);
-      trackEvent("generate_succeeded", { mode, tone, goal, language });
+      trackEvent("generate_succeeded", { mode: params.mode, tone, goal, language });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Something went wrong.";
       setError(message);
-      trackEvent("generate_failed", { mode, tone, goal, language, message });
+      trackEvent("generate_failed", { mode: params.mode, tone, goal, language, message });
     } finally {
       setLoading(false);
     }
+  }
+
+  function handleGenerateClick() {
+    runGenerate({
+      mode: effectiveMode,
+      conversationText,
+      profileText: bio,
+      matchName: activeMatch?.name,
+    });
+  }
+
+  function handleSelectMatch(match: Match) {
+    setActiveMatchId(match.id);
+    setBio(match.bio);
+    setConversationText(match.conversationText);
+    setResult(null);
+    setError(null);
+  }
+
+  function handleCreateMatch(name: string, matchBio: string) {
+    const match = addMatch(name, matchBio);
+    setMatches((prev) => [...prev, match]);
+    setActiveMatchId(match.id);
+    setBio(matchBio);
+    setConversationText("");
+    setResult(null);
+    setError(null);
+    setShowNewMatchModal(false);
+    runGenerate({ mode: "opener", profileText: matchBio, matchName: name });
   }
 
   async function handleVote(
@@ -159,41 +228,65 @@ export default function AssistantApp() {
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-10">
-      <header className="mb-8 text-center">
+      <header className="mb-6 text-center">
         <h1 className="text-2xl font-bold text-gray-900">Chat Assist</h1>
         <p className="mt-1 text-sm text-gray-500">
-          Paste your conversation, pick a tone and goal, get suggestions to send yourself.
-          Nothing is sent automatically.
+          Pick a match, get suggestions to send yourself. Nothing is sent automatically.
         </p>
       </header>
 
-      <div className="mb-6 flex justify-center gap-2">
+      <div className="mb-6 flex items-center gap-3 overflow-x-auto pb-1">
+        {matches.map((m) => (
+          <MatchAvatar
+            key={m.id}
+            name={m.name}
+            active={m.id === activeMatchId}
+            onClick={() => handleSelectMatch(m)}
+          />
+        ))}
         <button
           type="button"
-          onClick={() => setMode("reply")}
-          className={`rounded-full px-4 py-1.5 text-sm font-medium ${
-            mode === "reply" ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-600"
-          }`}
+          onClick={() => setShowNewMatchModal(true)}
+          className="flex w-16 flex-shrink-0 flex-col items-center gap-1"
         >
-          Reply to a conversation
-        </button>
-        <button
-          type="button"
-          onClick={() => setMode("opener")}
-          className={`rounded-full px-4 py-1.5 text-sm font-medium ${
-            mode === "opener" ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-600"
-          }`}
-        >
-          Write an opener
+          <span className="flex h-12 w-12 items-center justify-center rounded-full border-2 border-dashed border-gray-300 text-xl text-gray-400 hover:border-brand-400 hover:text-brand-500">
+            +
+          </span>
+          <span className="text-xs text-gray-500">New</span>
         </button>
       </div>
 
-      <div className="space-y-5 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-        {mode === "reply" ? (
+      {!activeMatch ? (
+        <div className="rounded-2xl border border-dashed border-gray-300 bg-white p-8 text-center text-sm text-gray-500">
+          Add your first match with "+ New" to get started — we'll ask for their name and bio
+          and generate opening lines right away.
+        </div>
+      ) : (
+        <div className="space-y-5 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
           <div>
             <div className="mb-1.5 flex items-center justify-between">
               <label className="block text-sm font-medium text-gray-700">
-                Paste the conversation
+                {activeMatch.name}'s bio
+              </label>
+              <ScreenshotUpload
+                uploading={profileUpload.uploading}
+                error={profileUpload.error}
+                onFileSelected={(file) => profileUpload.processFile(file, "upload")}
+              />
+            </div>
+            <textarea
+              value={bio}
+              onChange={(e) => handleBioChange(e.target.value)}
+              rows={3}
+              placeholder="Paste their bio, prompts/answers, or describe their photos"
+              className="w-full rounded-lg border border-gray-300 p-3 text-sm focus:border-brand-500 focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <div className="mb-1.5 flex items-center justify-between">
+              <label className="block text-sm font-medium text-gray-700">
+                Conversation (leave blank to get an opener from their bio)
               </label>
               <ScreenshotUpload
                 uploading={conversationUpload.uploading}
@@ -203,81 +296,55 @@ export default function AssistantApp() {
             </div>
             <textarea
               value={conversationText}
-              onChange={(e) => {
-                setConversationText(e.target.value);
-                setViaScreenshot(false);
-              }}
+              onChange={(e) => handleConversationChange(e.target.value)}
               rows={6}
               placeholder={"[MATCH]: hey! how's your week going\n[USER]: pretty good, just got back from a trip\n[MATCH]: ooh where'd you go?"}
               className="w-full rounded-lg border border-gray-300 p-3 text-sm focus:border-brand-500 focus:outline-none"
             />
             <p className="mt-1 text-xs text-gray-400">
-              Tip: label lines [MATCH] and [USER] if you can — it helps the suggestions stay accurate.
-              Or paste (Ctrl+V) a screenshot anywhere on this page and we'll transcribe it for you
-              (review it before generating).
+              Tip: label lines [MATCH] and [USER] if you can. Or paste (Ctrl+V) a screenshot
+              anywhere on this page and we'll transcribe it for you (review it before generating).
             </p>
           </div>
-        ) : (
+
           <div>
-            <div className="mb-1.5 flex items-center justify-between">
-              <label className="block text-sm font-medium text-gray-700">
-                Describe their profile / bio
-              </label>
-              <ScreenshotUpload
-                uploading={profileUpload.uploading}
-                error={profileUpload.error}
-                onFileSelected={(file) => profileUpload.processFile(file, "upload")}
-              />
-            </div>
-            <textarea
-              value={profileText}
-              onChange={(e) => {
-                setProfileText(e.target.value);
-                setViaScreenshot(false);
-              }}
-              rows={4}
-              placeholder="e.g. Bio says she loves hiking and bad puns. Prompt answer: 'my simple pleasures' -> 'iced coffee in winter'."
-              className="w-full rounded-lg border border-gray-300 p-3 text-sm focus:border-brand-500 focus:outline-none"
+            <label className="mb-1.5 block text-sm font-medium text-gray-700">
+              Anything else worth knowing? (optional)
+            </label>
+            <input
+              type="text"
+              value={extraContext}
+              onChange={(e) => setExtraContext(e.target.value)}
+              placeholder="e.g. we already agreed to get coffee next week"
+              className="w-full rounded-lg border border-gray-300 p-2.5 text-sm focus:border-brand-500 focus:outline-none"
             />
-            <p className="mt-1 text-xs text-gray-400">
-              Tip: you can also paste (Ctrl+V) a profile screenshot anywhere on this page.
-            </p>
           </div>
-        )}
 
-        <div>
-          <label className="mb-1.5 block text-sm font-medium text-gray-700">
-            Anything else worth knowing? (optional)
-          </label>
-          <input
-            type="text"
-            value={extraContext}
-            onChange={(e) => setExtraContext(e.target.value)}
-            placeholder="e.g. we already agreed to get coffee next week"
-            className="w-full rounded-lg border border-gray-300 p-2.5 text-sm focus:border-brand-500 focus:outline-none"
-          />
+          <ToneSelector value={tone} onChange={setTone} />
+          <GoalSelector value={goal} onChange={setGoal} />
+          <LanguageSelector value={language} onChange={setLanguage} />
+          <StylePanel onExamplesChange={setStyleExamples} />
+
+          <button
+            type="button"
+            onClick={handleGenerateClick}
+            disabled={!canSubmit}
+            className="w-full rounded-lg bg-brand-600 px-4 py-2.5 font-medium text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {loading
+              ? "Thinking..."
+              : effectiveMode === "reply"
+                ? "Get reply suggestions"
+                : "Get opening lines"}
+          </button>
+
+          <p className="text-center text-xs text-gray-400">
+            {remaining > 0
+              ? `${remaining} of ${dailyLimit} free suggestions left today`
+              : "Free limit reached for today"}
+          </p>
         </div>
-
-        <ToneSelector value={tone} onChange={setTone} />
-        <GoalSelector value={goal} onChange={setGoal} />
-        <LanguageSelector value={language} onChange={setLanguage} />
-        <StylePanel onExamplesChange={setStyleExamples} />
-
-        <button
-          type="button"
-          onClick={handleGenerate}
-          disabled={!canSubmit}
-          className="w-full rounded-lg bg-brand-600 px-4 py-2.5 font-medium text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {loading ? "Thinking..." : "Get suggestions"}
-        </button>
-
-        <p className="text-center text-xs text-gray-400">
-          {remaining > 0
-            ? `${remaining} of ${dailyLimit} free suggestions left today`
-            : "Free limit reached for today"}
-        </p>
-      </div>
+      )}
 
       {error && (
         <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
@@ -307,6 +374,11 @@ export default function AssistantApp() {
       </footer>
 
       <PaywallModal open={showPaywall} onClose={() => setShowPaywall(false)} />
+      <NewMatchModal
+        open={showNewMatchModal}
+        onClose={() => setShowNewMatchModal(false)}
+        onCreate={handleCreateMatch}
+      />
     </div>
   );
 }
