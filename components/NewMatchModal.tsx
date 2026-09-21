@@ -70,7 +70,7 @@ export default function NewMatchModal({
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Priya"
               autoFocus
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm placeholder:italic placeholder:text-gray-400 focus:border-brand-500 focus:outline-none"
             />
           </div>
           <div>
@@ -89,7 +89,7 @@ export default function NewMatchModal({
               onChange={(e) => setBio(e.target.value)}
               rows={4}
               placeholder="Paste their bio, prompts/answers, or upload/paste a screenshot above"
-              className="w-full rounded-lg border border-gray-300 p-2.5 text-sm focus:border-brand-500 focus:outline-none"
+              className="w-full rounded-lg border border-gray-300 p-2.5 text-sm placeholder:italic placeholder:text-gray-400 focus:border-brand-500 focus:outline-none"
             />
           </div>
           <p className="text-xs text-gray-400">

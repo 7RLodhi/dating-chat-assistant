@@ -78,9 +78,34 @@ export interface OcrResponse {
   text: string;
 }
 
+export type OccupationType = "student" | "professional" | "";
+export type EducationLevel = "school" | "college" | "";
+
 export interface MatchFacts {
   summary: string;
-  birthdate: string;
+  /** ISO YYYY-MM-DD, only filled when the full date (including year) is known. */
+  dob: string;
+  /** Stated age as a plain number-string, used when dob isn't known. */
+  age: string;
+  location: string;
+  occupationType: OccupationType;
+  educationLevel: EducationLevel;
+  /** School only, e.g. "11th". */
+  schoolClass: string;
+  /** School only, and only relevant for 11th/12th, e.g. "Science". */
+  schoolStream: string;
+  /** College only, e.g. "2nd year" or "final year". */
+  collegeYear: string;
+  /** College only, e.g. "B.Tech", "B.Com". */
+  degree: string;
+  /** College only, e.g. "Computer Science". */
+  branch: string;
+  /** Professional only. */
+  company: string;
+  /** Professional only, their job title. */
+  jobRole: string;
+  /** Professional only, where they work (if different from general location). */
+  jobLocation: string;
   hobbies: string[];
   taste: string[];
   surprises: string;

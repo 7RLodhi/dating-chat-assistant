@@ -11,8 +11,9 @@ import StylePanel from "./StylePanel";
 import ScreenshotUpload from "./ScreenshotUpload";
 import MatchAvatar from "./MatchAvatar";
 import NewMatchModal from "./NewMatchModal";
-import MatchFactsPanel from "./MatchFactsPanel";
+import MatchFactsModal from "./MatchFactsModal";
 import { trackEvent } from "@/lib/analytics";
+import { getDisplayAge } from "@/lib/ageUtils";
 import { Match, addMatch, getMatches, updateMatch } from "@/lib/matches";
 import {
   getDailyLimit,
@@ -28,8 +29,9 @@ export default function AssistantApp() {
   const [activeMatchId, setActiveMatchId] = useState<string | null>(null);
   const [showNewMatchModal, setShowNewMatchModal] = useState(false);
   const [showBio, setShowBio] = useState(false);
-  const [showFacts, setShowFacts] = useState(false);
+  const [showFactsModal, setShowFactsModal] = useState(false);
   const [factsRefreshing, setFactsRefreshing] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   const [bio, setBio] = useState("");
   const [conversationText, setConversationText] = useState("");
@@ -186,17 +188,10 @@ export default function AssistantApp() {
 
     const existing = matches.find((m) => m.id === matchId)?.facts;
     const previousFacts: FactsResponse | undefined = existing
-      ? {
-          summary: existing.summary,
-          birthdate: existing.birthdate,
-          hobbies: existing.hobbies,
-          taste: existing.taste,
-          surprises: existing.surprises,
-          dreams: existing.dreams,
-          wishlist: existing.wishlist,
-          fantasies: existing.fantasies,
-          other: existing.other,
-        }
+      ? (() => {
+          const { updatedAt, ...rest } = existing;
+          return rest;
+        })()
       : undefined;
 
     setFactsRefreshing(true);
@@ -239,7 +234,6 @@ export default function AssistantApp() {
     setResult(null);
     setError(null);
     setShowBio(false);
-    setShowFacts(false);
   }
 
   function handleCreateMatch(name: string, matchBio: string) {
@@ -251,7 +245,6 @@ export default function AssistantApp() {
     setResult(null);
     setError(null);
     setShowBio(false);
-    setShowFacts(false);
     setShowNewMatchModal(false);
     runGenerate({ mode: "opener", profileText: matchBio, matchName: name });
     refreshFacts(match.id, matchBio, "");
@@ -297,6 +290,7 @@ export default function AssistantApp() {
           <MatchAvatar
             key={m.id}
             name={m.name}
+            age={getDisplayAge(m.facts)}
             active={m.id === activeMatchId}
             onClick={() => handleSelectMatch(m)}
           />
@@ -333,13 +327,11 @@ export default function AssistantApp() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setShowFacts((v) => !v)}
+                  onClick={() => setShowFactsModal(true)}
                   className="flex items-center gap-1 text-sm font-medium text-gray-700"
                 >
                   📋 Summary
-                  <span className="text-xs text-gray-400">
-                    {factsRefreshing ? "⏳" : showFacts ? "▲ Hide" : "▼ Show"}
-                  </span>
+                  {factsRefreshing && <span className="text-xs text-gray-400">⏳</span>}
                 </button>
               </div>
               {showBio && (
@@ -356,13 +348,8 @@ export default function AssistantApp() {
                 onChange={(e) => handleBioChange(e.target.value)}
                 rows={3}
                 placeholder="Paste their bio, prompts/answers, or describe their photos"
-                className="mt-1.5 w-full rounded-lg border border-gray-300 p-3 text-sm focus:border-brand-500 focus:outline-none"
+                className="mt-1.5 w-full rounded-lg border border-gray-300 p-3 text-sm placeholder:italic placeholder:text-gray-400 focus:border-brand-500 focus:outline-none"
               />
-            )}
-            {showFacts && (
-              <div className="mt-1.5">
-                <MatchFactsPanel facts={activeMatch.facts ?? null} refreshing={factsRefreshing} />
-              </div>
             )}
           </div>
 
@@ -382,11 +369,10 @@ export default function AssistantApp() {
               onChange={(e) => handleConversationChange(e.target.value)}
               rows={6}
               placeholder={"[MATCH]: hey! how's your week going\n[USER]: pretty good, just got back from a trip\n[MATCH]: ooh where'd you go?"}
-              className="w-full rounded-lg border border-gray-300 p-3 text-sm focus:border-brand-500 focus:outline-none"
+              className="w-full rounded-lg border border-gray-300 p-3 text-sm placeholder:italic placeholder:text-gray-400 focus:border-brand-500 focus:outline-none"
             />
             <p className="mt-1 text-xs text-gray-400">
-              Tip: label lines [MATCH] and [USER] if you can. Or paste (Ctrl+V) a screenshot
-              anywhere on this page and we'll transcribe it for you (review it before generating).
+              Tip: Paste a screenshot, or type and label lines like [MATCH]: and [USER]:
             </p>
           </div>
 
@@ -399,14 +385,29 @@ export default function AssistantApp() {
               value={extraContext}
               onChange={(e) => setExtraContext(e.target.value)}
               placeholder="e.g. we already agreed to get coffee next week"
-              className="w-full rounded-lg border border-gray-300 p-2.5 text-sm focus:border-brand-500 focus:outline-none"
+              className="w-full rounded-lg border border-gray-300 p-2.5 text-sm placeholder:italic placeholder:text-gray-400 focus:border-brand-500 focus:outline-none"
             />
           </div>
 
           <ToneSelector value={tone} onChange={setTone} />
-          <GoalSelector value={goal} onChange={setGoal} />
-          <LanguageSelector value={language} onChange={setLanguage} />
-          <StylePanel onExamplesChange={setStyleExamples} />
+
+          <div className="rounded-lg border border-gray-200">
+            <button
+              type="button"
+              onClick={() => setShowAdvanced((v) => !v)}
+              className="flex w-full items-center justify-between px-3 py-2 text-sm font-medium text-gray-700"
+            >
+              <span>⚙️ Advanced settings</span>
+              <span className="text-xs text-gray-400">{showAdvanced ? "▲ Hide" : "▼ Show"}</span>
+            </button>
+            {showAdvanced && (
+              <div className="space-y-4 border-t border-gray-200 p-3">
+                <GoalSelector value={goal} onChange={setGoal} />
+                <LanguageSelector value={language} onChange={setLanguage} />
+                <StylePanel onExamplesChange={setStyleExamples} />
+              </div>
+            )}
+          </div>
 
           <button
             type="button"
@@ -458,6 +459,15 @@ export default function AssistantApp() {
         onClose={() => setShowNewMatchModal(false)}
         onCreate={handleCreateMatch}
       />
+      {activeMatch && (
+        <MatchFactsModal
+          open={showFactsModal}
+          onClose={() => setShowFactsModal(false)}
+          matchName={activeMatch.name}
+          facts={activeMatch.facts ?? null}
+          refreshing={factsRefreshing}
+        />
+      )}
     </div>
   );
 }

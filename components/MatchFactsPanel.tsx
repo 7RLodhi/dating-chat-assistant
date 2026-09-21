@@ -1,3 +1,4 @@
+import { formatDob, formatOccupation, getDisplayAge } from "@/lib/ageUtils";
 import { MatchFacts } from "@/lib/types";
 
 function FactRow({ label, value }: { label: string; value: string | string[] }) {
@@ -26,10 +27,16 @@ export default function MatchFactsPanel({
   facts: MatchFacts | null;
   refreshing: boolean;
 }) {
+  const age = getDisplayAge(facts);
+  const occupation = formatOccupation(facts);
+
   const hasAnything = Boolean(
     facts &&
       (facts.summary ||
-        facts.birthdate ||
+        facts.dob ||
+        facts.age ||
+        facts.location ||
+        occupation ||
         facts.hobbies.length ||
         facts.taste.length ||
         facts.surprises ||
@@ -50,7 +57,10 @@ export default function MatchFactsPanel({
       )}
       {facts?.summary && <p className="text-sm text-gray-800">{facts.summary}</p>}
       <div className="space-y-1">
-        <FactRow label="Birthdate" value={facts?.birthdate ?? ""} />
+        <FactRow label="Age" value={age ? String(age) : ""} />
+        <FactRow label="Birthdate" value={facts?.dob ? formatDob(facts.dob) : ""} />
+        <FactRow label="Location" value={facts?.location ?? ""} />
+        <FactRow label="Occupation" value={occupation} />
         <FactRow label="Hobbies" value={facts?.hobbies ?? []} />
         <FactRow label="Taste" value={facts?.taste ?? []} />
         <FactRow label="Surprises" value={facts?.surprises ?? ""} />

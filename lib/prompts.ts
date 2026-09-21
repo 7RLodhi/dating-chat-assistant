@@ -225,10 +225,30 @@ ${JSON.stringify(previousFacts ?? {})}
 
 Update the fact sheet using ONLY information actually stated or strongly implied above.
 
+Categories — occupation logic:
+- occupationType: "student", "professional", or empty string if unclear.
+- If occupationType is "student": set educationLevel to "school" or "college".
+  - If "school": schoolClass is their grade (e.g. "11th", "9th"). If it's 11th or 12th, also fill schoolStream (e.g. "Science", "Commerce", "Arts") if known.
+  - If "college": fill collegeYear (e.g. "2nd year", "final year"), degree (e.g. "B.Tech", "B.Com", "MBA"), and branch (e.g. "Computer Science", "Marketing") — only the ones actually known.
+  - Leave educationLevel/schoolClass/schoolStream/collegeYear/degree/branch empty ("") if occupationType isn't "student" or a field isn't known.
+- If occupationType is "professional": fill company, jobRole (their job title), and jobLocation (where they work, if mentioned) — only the ones actually known. Leave these empty if not a professional or not known.
+
 Return JSON:
 {
   "summary": "string, 2-4 sentence natural-language summary of who they are so far, suitable to show directly to the user. Empty string if there's truly nothing to summarize yet.",
-  "birthdate": "string — their birthdate or age if mentioned, empty string if unknown",
+  "dob": "string — their date of birth as YYYY-MM-DD, ONLY if the full date INCLUDING YEAR is known or confidently inferable (e.g. stated age + birthday together). Empty string otherwise — do not guess a year that wasn't given.",
+  "age": "string — their age as a plain number (e.g. '26') if directly stated, empty string otherwise",
+  "location": "string — where they currently live/are based, empty string if unknown",
+  "occupationType": "\"student\" | \"professional\" | \"\"",
+  "educationLevel": "\"school\" | \"college\" | \"\"",
+  "schoolClass": "string",
+  "schoolStream": "string",
+  "collegeYear": "string",
+  "degree": "string",
+  "branch": "string",
+  "company": "string",
+  "jobRole": "string",
+  "jobLocation": "string",
   "hobbies": ["string", "..."],
   "taste": ["string", "... food/music/movie/other preferences they've mentioned"],
   "surprises": "string — e.g. 'loves surprises', 'prefers no surprises', or empty string if unknown",
@@ -243,7 +263,19 @@ export const FACTS_JSON_SCHEMA = {
   type: "object",
   properties: {
     summary: { type: "string" },
-    birthdate: { type: "string" },
+    dob: { type: "string" },
+    age: { type: "string" },
+    location: { type: "string" },
+    occupationType: { type: "string", enum: ["student", "professional", ""] },
+    educationLevel: { type: "string", enum: ["school", "college", ""] },
+    schoolClass: { type: "string" },
+    schoolStream: { type: "string" },
+    collegeYear: { type: "string" },
+    degree: { type: "string" },
+    branch: { type: "string" },
+    company: { type: "string" },
+    jobRole: { type: "string" },
+    jobLocation: { type: "string" },
     hobbies: { type: "array", items: { type: "string" } },
     taste: { type: "array", items: { type: "string" } },
     surprises: { type: "string" },
@@ -254,7 +286,19 @@ export const FACTS_JSON_SCHEMA = {
   },
   required: [
     "summary",
-    "birthdate",
+    "dob",
+    "age",
+    "location",
+    "occupationType",
+    "educationLevel",
+    "schoolClass",
+    "schoolStream",
+    "collegeYear",
+    "degree",
+    "branch",
+    "company",
+    "jobRole",
+    "jobLocation",
     "hobbies",
     "taste",
     "surprises",

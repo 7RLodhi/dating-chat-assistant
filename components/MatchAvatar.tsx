@@ -27,10 +27,12 @@ function initialsFor(name: string): string {
 
 export default function MatchAvatar({
   name,
+  age,
   active,
   onClick,
 }: {
   name: string;
+  age?: number | null;
   active: boolean;
   onClick: () => void;
 }) {
@@ -47,7 +49,10 @@ export default function MatchAvatar({
       >
         {initialsFor(name)}
       </span>
-      <span className="w-full truncate text-center text-xs text-gray-600">{name}</span>
+      <span className="w-full truncate text-center text-xs text-gray-600">
+        {name}
+        {age ? `, ${age}` : ""}
+      </span>
     </button>
   );
 }

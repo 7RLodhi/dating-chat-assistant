@@ -95,7 +95,7 @@ export default function StylePanel({
             onChange={(e) => setExamples(e.target.value)}
             rows={4}
             placeholder={"lol yeah that's fair\nhonestly same, no notes\nwait that's actually so real"}
-            className="w-full rounded-lg border border-gray-300 p-2.5 text-sm focus:border-brand-500 focus:outline-none"
+            className="w-full rounded-lg border border-gray-300 p-2.5 text-sm placeholder:italic placeholder:text-gray-400 focus:border-brand-500 focus:outline-none"
           />
           <div className="flex flex-wrap gap-2">
             <button
