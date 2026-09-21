@@ -125,7 +125,7 @@ export default function ConversationComposer({
           </button>
           {rows.length === 0 && pastingSpeaker === null && (
             <span className="animate-bounce rounded-full bg-gray-900 px-2.5 py-1 text-[11px] font-medium text-white shadow">
-              👆 tap here to paste
+              👈 tap here to paste
             </span>
           )}
         </div>

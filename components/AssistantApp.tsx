@@ -381,7 +381,7 @@ export default function AssistantApp() {
 
           <div>
             <label className="mb-1.5 block text-sm font-medium text-gray-700">
-              Conversation (leave blank to get an opener from their bio)
+              Conversation
             </label>
             <ConversationComposer
               rows={conversationRows}
