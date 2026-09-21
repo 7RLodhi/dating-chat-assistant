@@ -25,7 +25,11 @@ import {
   incrementUsage,
   resetUsage,
 } from "@/lib/rateLimit";
-import { extractImageFromClipboard, useScreenshotUpload } from "@/lib/useScreenshotUpload";
+import {
+  extractImageFromClipboard,
+  readClipboardContent,
+  useScreenshotUpload,
+} from "@/lib/useScreenshotUpload";
 import { FactsResponse, Goal, Language, MatchFacts, Mode, SuggestResponse, Tone } from "@/lib/types";
 
 export default function AssistantApp() {
@@ -89,9 +93,8 @@ export default function AssistantApp() {
     persistRows(rows, false);
   }
 
-  // Shared by: the global Ctrl+V-anywhere listener below, and both "They
-  // said"/"You said" camera icons in the composer — all three just append
-  // whatever OCR finds onto the current rows.
+  // Shared by the global Ctrl+V-anywhere listener and the Upload Chat
+  // Screenshot button — both append whatever OCR finds onto the current rows.
   const conversationUpload = useScreenshotUpload((text) => {
     const parsed = parseConversationText(text);
     persistRows(parsed.length > 0 ? [...conversationRows, ...parsed] : conversationRows, true);
@@ -103,18 +106,15 @@ export default function AssistantApp() {
   }, "profile");
 
   // Lets you paste (Ctrl+V) a screenshot anywhere on the page, not just while
-  // focused in a specific textarea — routed based on effective mode. Refs
-  // avoid re-subscribing the listener on every keystroke re-render.
-  const effectiveModeRef = useRef(effectiveMode);
-  effectiveModeRef.current = effectiveMode;
+  // focused in a specific field. Pasted images always go to the conversation
+  // as chat — bio screenshots have their own camera icon on the bio field.
+  // Refs avoid re-subscribing the listener on every keystroke re-render.
   const activeMatchIdRef = useRef(activeMatchId);
   activeMatchIdRef.current = activeMatchId;
   const showNewMatchModalRef = useRef(showNewMatchModal);
   showNewMatchModalRef.current = showNewMatchModal;
   const conversationUploadRef = useRef(conversationUpload);
   conversationUploadRef.current = conversationUpload;
-  const profileUploadRef = useRef(profileUpload);
-  profileUploadRef.current = profileUpload;
   const chatScreenshotInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -124,15 +124,23 @@ export default function AssistantApp() {
       const file = extractImageFromClipboard(e.clipboardData);
       if (!file) return; // no image in clipboard — let normal text paste happen
       e.preventDefault();
-      if (effectiveModeRef.current === "reply") {
-        conversationUploadRef.current.processFile(file, "paste");
-      } else {
-        profileUploadRef.current.processFile(file, "paste");
-      }
+      conversationUploadRef.current.processFile(file, "paste");
     }
     window.addEventListener("paste", handlePaste);
     return () => window.removeEventListener("paste", handlePaste);
   }, []);
+
+  // The Upload button pastes straight from the clipboard when a screenshot
+  // is sitting there (the common phone/Win+Shift+S flow) and only opens the
+  // file picker when the clipboard has no image.
+  async function handleUploadChatScreenshotClick() {
+    const clipboardContent = await readClipboardContent();
+    if (clipboardContent?.type === "image") {
+      conversationUpload.processFile(clipboardContent.file, "paste");
+      return;
+    }
+    chatScreenshotInputRef.current?.click();
+  }
 
   const dailyLimit = getDailyLimit();
   const inputText = effectiveMode === "reply" ? conversationText : bio;
@@ -408,8 +416,9 @@ export default function AssistantApp() {
               />
               <button
                 type="button"
-                onClick={() => chatScreenshotInputRef.current?.click()}
+                onClick={handleUploadChatScreenshotClick}
                 disabled={conversationUpload.uploading}
+                title="Pastes the screenshot from your clipboard if there is one, otherwise lets you pick a file"
                 className="rounded-full border border-gray-300 bg-white px-4 py-1.5 text-xs font-medium text-gray-700 hover:border-brand-400 hover:text-brand-600 disabled:opacity-60"
               >
                 {conversationUpload.uploading ? "Reading screenshot…" : "📷 Upload Chat Screenshot"}
