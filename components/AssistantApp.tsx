@@ -8,12 +8,14 @@ import MoodBadge from "./MoodBadge";
 import SuggestionCard from "./SuggestionCard";
 import PaywallModal from "./PaywallModal";
 import StylePanel from "./StylePanel";
-import ScreenshotUpload from "./ScreenshotUpload";
+import ScreenshotIconButton from "./ScreenshotIconButton";
+import ConversationComposer from "./ConversationComposer";
 import MatchAvatar from "./MatchAvatar";
 import NewMatchModal from "./NewMatchModal";
 import MatchFactsModal from "./MatchFactsModal";
 import { trackEvent } from "@/lib/analytics";
 import { getDisplayAge } from "@/lib/ageUtils";
+import { ConversationRow, parseConversationText, serializeRows } from "@/lib/conversationRows";
 import { Match, addMatch, getMatches, updateMatch } from "@/lib/matches";
 import {
   getDailyLimit,
@@ -34,7 +36,8 @@ export default function AssistantApp() {
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   const [bio, setBio] = useState("");
-  const [conversationText, setConversationText] = useState("");
+  const [conversationRows, setConversationRows] = useState<ConversationRow[]>([]);
+  const conversationText = serializeRows(conversationRows);
   const [extraContext, setExtraContext] = useState("");
   const [tone, setTone] = useState<Tone>("witty");
   const [goal, setGoal] = useState<Goal>("get_a_reply");
@@ -63,7 +66,7 @@ export default function AssistantApp() {
       const mostRecent = loaded[loaded.length - 1];
       setActiveMatchId(mostRecent.id);
       setBio(mostRecent.bio);
-      setConversationText(mostRecent.conversationText);
+      setConversationRows(parseConversationText(mostRecent.conversationText));
     }
   }, []);
 
@@ -73,15 +76,22 @@ export default function AssistantApp() {
     if (activeMatchId) updateMatch(activeMatchId, { bio: value });
   }
 
-  function handleConversationChange(value: string) {
-    setConversationText(value);
-    setViaScreenshot(false);
-    if (activeMatchId) updateMatch(activeMatchId, { conversationText: value });
+  function persistRows(rows: ConversationRow[], fromScreenshot: boolean) {
+    setConversationRows(rows);
+    setViaScreenshot(fromScreenshot);
+    if (activeMatchId) updateMatch(activeMatchId, { conversationText: serializeRows(rows) });
   }
 
+  function handleRowsChange(rows: ConversationRow[]) {
+    persistRows(rows, false);
+  }
+
+  // Shared by: the global Ctrl+V-anywhere listener below, and both "They
+  // said"/"You said" camera icons in the composer — all three just append
+  // whatever OCR finds onto the current rows.
   const conversationUpload = useScreenshotUpload((text) => {
-    handleConversationChange(text);
-    setViaScreenshot(true);
+    const parsed = parseConversationText(text);
+    persistRows(parsed.length > 0 ? [...conversationRows, ...parsed] : conversationRows, true);
   }, "conversation");
 
   const profileUpload = useScreenshotUpload((text) => {
@@ -230,7 +240,7 @@ export default function AssistantApp() {
   function handleSelectMatch(match: Match) {
     setActiveMatchId(match.id);
     setBio(match.bio);
-    setConversationText(match.conversationText);
+    setConversationRows(parseConversationText(match.conversationText));
     setResult(null);
     setError(null);
     setShowBio(false);
@@ -241,7 +251,7 @@ export default function AssistantApp() {
     setMatches((prev) => [...prev, match]);
     setActiveMatchId(match.id);
     setBio(matchBio);
-    setConversationText("");
+    setConversationRows([]);
     setResult(null);
     setError(null);
     setShowBio(false);
@@ -315,64 +325,61 @@ export default function AssistantApp() {
       ) : (
         <div className="space-y-5 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
           <div>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <button
-                  type="button"
-                  onClick={() => setShowBio((v) => !v)}
-                  className="flex items-center gap-1 text-sm font-medium text-gray-700"
-                >
-                  {activeMatch.name}'s bio
-                  <span className="text-xs text-gray-400">{showBio ? "▲ Hide" : "▼ Show"}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowFactsModal(true)}
-                  className="flex items-center gap-1 text-sm font-medium text-gray-700"
-                >
-                  📋 Summary
-                  {factsRefreshing && <span className="text-xs text-gray-400">⏳</span>}
-                </button>
-              </div>
-              {showBio && (
-                <ScreenshotUpload
-                  uploading={profileUpload.uploading}
-                  error={profileUpload.error}
-                  onFileSelected={(file) => profileUpload.processFile(file, "upload")}
-                />
-              )}
+            <div className="flex items-center gap-4">
+              <button
+                type="button"
+                onClick={() => setShowBio((v) => !v)}
+                className="flex items-center gap-1 text-sm font-medium text-gray-700"
+              >
+                {activeMatch.name}'s bio
+                <span className="text-xs text-gray-400">{showBio ? "▲ Hide" : "▼ Show"}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowFactsModal(true)}
+                className="flex items-center gap-1 text-sm font-medium text-gray-700"
+              >
+                📋 Summary
+                {factsRefreshing && <span className="text-xs text-gray-400">⏳</span>}
+              </button>
             </div>
             {showBio && (
-              <textarea
-                value={bio}
-                onChange={(e) => handleBioChange(e.target.value)}
-                rows={3}
-                placeholder="Paste their bio, prompts/answers, or describe their photos"
-                className="mt-1.5 w-full rounded-lg border border-gray-300 p-3 text-sm placeholder:italic placeholder:text-gray-400 focus:border-brand-500 focus:outline-none"
-              />
+              <div className="relative mt-1.5">
+                <textarea
+                  value={bio}
+                  onChange={(e) => handleBioChange(e.target.value)}
+                  rows={3}
+                  placeholder="Paste their bio, prompts/answers, or describe their photos"
+                  className="w-full rounded-lg border border-gray-300 p-3 pr-9 text-sm placeholder:italic placeholder:text-gray-400 focus:border-brand-500 focus:outline-none"
+                />
+                <ScreenshotIconButton
+                  uploading={profileUpload.uploading}
+                  onFileSelected={(file) => profileUpload.processFile(file, "upload")}
+                  className="absolute bottom-2 right-2 h-7 w-7"
+                />
+                {profileUpload.error && (
+                  <p className="mt-1 text-xs text-red-600">{profileUpload.error}</p>
+                )}
+              </div>
             )}
           </div>
 
           <div>
-            <div className="mb-1.5 flex items-center justify-between">
-              <label className="block text-sm font-medium text-gray-700">
-                Conversation (leave blank to get an opener from their bio)
-              </label>
-              <ScreenshotUpload
-                uploading={conversationUpload.uploading}
-                error={conversationUpload.error}
-                onFileSelected={(file) => conversationUpload.processFile(file, "upload")}
-              />
-            </div>
-            <textarea
-              value={conversationText}
-              onChange={(e) => handleConversationChange(e.target.value)}
-              rows={6}
-              placeholder={"[MATCH]: hey! how's your week going\n[USER]: pretty good, just got back from a trip\n[MATCH]: ooh where'd you go?"}
-              className="w-full rounded-lg border border-gray-300 p-3 text-sm placeholder:italic placeholder:text-gray-400 focus:border-brand-500 focus:outline-none"
+            <label className="mb-1.5 block text-sm font-medium text-gray-700">
+              Conversation (leave blank to get an opener from their bio)
+            </label>
+            <ConversationComposer
+              rows={conversationRows}
+              onRowsChange={handleRowsChange}
+              screenshotUploading={conversationUpload.uploading}
+              onScreenshotFile={(file) => conversationUpload.processFile(file, "upload")}
             />
+            {conversationUpload.error && (
+              <p className="mt-1 text-xs text-red-600">{conversationUpload.error}</p>
+            )}
             <p className="mt-1 text-xs text-gray-400">
-              Tip: Paste a screenshot, or type and label lines like [MATCH]: and [USER]:
+              Tip: Type a message and press Enter, or click the camera icon to paste/upload a
+              screenshot.
             </p>
           </div>
 

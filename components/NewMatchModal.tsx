@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import ScreenshotUpload from "./ScreenshotUpload";
+import ScreenshotIconButton from "./ScreenshotIconButton";
 import { extractImageFromClipboard, useScreenshotUpload } from "@/lib/useScreenshotUpload";
 
 export default function NewMatchModal({
@@ -74,23 +74,24 @@ export default function NewMatchModal({
             />
           </div>
           <div>
-            <div className="mb-1 flex items-center justify-between">
-              <label className="block text-sm font-medium text-gray-700">
-                Their profile bio
-              </label>
-              <ScreenshotUpload
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              Their profile bio
+            </label>
+            <div className="relative">
+              <textarea
+                value={bio}
+                onChange={(e) => setBio(e.target.value)}
+                rows={4}
+                placeholder="Paste their bio, prompts/answers, or click the camera icon below"
+                className="w-full rounded-lg border border-gray-300 p-2.5 pr-9 text-sm placeholder:italic placeholder:text-gray-400 focus:border-brand-500 focus:outline-none"
+              />
+              <ScreenshotIconButton
                 uploading={bioUpload.uploading}
-                error={bioUpload.error}
                 onFileSelected={(file) => bioUpload.processFile(file, "upload")}
+                className="absolute bottom-2 right-2 h-7 w-7"
               />
             </div>
-            <textarea
-              value={bio}
-              onChange={(e) => setBio(e.target.value)}
-              rows={4}
-              placeholder="Paste their bio, prompts/answers, or upload/paste a screenshot above"
-              className="w-full rounded-lg border border-gray-300 p-2.5 text-sm placeholder:italic placeholder:text-gray-400 focus:border-brand-500 focus:outline-none"
-            />
+            {bioUpload.error && <p className="mt-1 text-xs text-red-600">{bioUpload.error}</p>}
           </div>
           <p className="text-xs text-gray-400">
             We'll generate opening lines right away — including a pun on their name if a natural

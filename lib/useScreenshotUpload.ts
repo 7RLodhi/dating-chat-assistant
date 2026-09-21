@@ -86,3 +86,49 @@ export function extractImageFromClipboard(
   }
   return null;
 }
+
+export type ClipboardContent = { type: "image"; file: File } | { type: "text"; text: string };
+
+/**
+ * Actively reads the clipboard (for click-to-paste icons, as opposed to the
+ * passive Ctrl+V `paste` event). Tries an image first, then plain text.
+ * Returns null if the clipboard is empty, unsupported, or access was denied
+ * — callers should fall back to a file picker in that case.
+ */
+export async function readClipboardContent(): Promise<ClipboardContent | null> {
+  if (typeof navigator === "undefined" || !navigator.clipboard) return null;
+
+  try {
+    if (navigator.clipboard.read) {
+      const items = await navigator.clipboard.read();
+      for (const item of items) {
+        const imageType = item.types.find((t) => t.startsWith("image/"));
+        if (imageType) {
+          const blob = await item.getType(imageType);
+          const file = new File([blob], "clipboard-image", { type: imageType });
+          return { type: "image", file };
+        }
+      }
+      for (const item of items) {
+        if (item.types.includes("text/plain")) {
+          const blob = await item.getType("text/plain");
+          const text = (await blob.text()).trim();
+          if (text) return { type: "text", text };
+        }
+      }
+      return null;
+    }
+  } catch {
+    // Permission denied, unsupported browser, or empty clipboard — fall
+    // through to the plain-text-only API below before giving up.
+  }
+
+  try {
+    const text = (await navigator.clipboard.readText()).trim();
+    if (text) return { type: "text", text };
+  } catch {
+    // ignore
+  }
+
+  return null;
+}
