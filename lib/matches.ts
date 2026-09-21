@@ -5,12 +5,15 @@
 // is now inferred from whether conversationText is empty, instead of a
 // manual mode toggle.
 
+import { MatchFacts } from "./types";
+
 export interface Match {
   id: string;
   name: string;
   bio: string;
   conversationText: string;
   createdAt: string;
+  facts?: MatchFacts;
 }
 
 const STORAGE_KEY = "dca_matches_v0";
@@ -44,7 +47,7 @@ export function addMatch(name: string, bio: string): Match {
 
 export function updateMatch(
   id: string,
-  patch: Partial<Pick<Match, "name" | "bio" | "conversationText">>
+  patch: Partial<Pick<Match, "name" | "bio" | "conversationText" | "facts">>
 ): void {
   saveMatches(getMatches().map((m) => (m.id === id ? { ...m, ...patch } : m)));
 }

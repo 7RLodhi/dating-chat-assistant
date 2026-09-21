@@ -77,3 +77,24 @@ export interface OcrRequestBody {
 export interface OcrResponse {
   text: string;
 }
+
+export interface MatchFacts {
+  summary: string;
+  birthdate: string;
+  hobbies: string[];
+  taste: string[];
+  surprises: string;
+  dreams: string[];
+  wishlist: string[];
+  fantasies: string[];
+  other: string[];
+  updatedAt: string;
+}
+
+export type FactsResponse = Omit<MatchFacts, "updatedAt">;
+
+export interface FactsRequestBody {
+  bio: string;
+  conversationText: string;
+  previousFacts?: FactsResponse;
+}

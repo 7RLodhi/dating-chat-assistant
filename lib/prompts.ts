@@ -195,6 +195,77 @@ export const NAME_PUN_JSON_SCHEMA = {
 };
 
 // ---------------------------------------------------------------------------
+// Match facts extraction (auto-updating "what we've learned" panel)
+// ---------------------------------------------------------------------------
+// Runs alongside every generation (not blocking it) to keep a living,
+// incrementally-merged fact sheet about the match — see route.ts and
+// AssistantApp.tsx. Deliberately conservative: only include things actually
+// stated or strongly implied, never invented.
+
+export const FACTS_SYSTEM_PROMPT = `You extract and maintain a structured fact-sheet about a dating app match based on their bio and the ongoing conversation. Be meticulous: only include things that were actually stated or strongly and unambiguously implied — never invent, guess, or assume. When merging with previously known facts, keep anything still accurate, add newly learned things, and only change or drop a previous fact if new information clearly contradicts it. If nothing is known for a category, return an empty array or empty string for it — do not fabricate something just to fill it in.`;
+
+export function buildFactsExtractionPrompt(params: {
+  bio: string;
+  conversationText: string;
+  previousFacts?: Record<string, unknown>;
+}): string {
+  const { bio, conversationText, previousFacts } = params;
+  return `MATCH'S BIO:
+"""
+${bio || "(none provided)"}
+"""
+
+CONVERSATION SO FAR (may be empty if none yet):
+"""
+${conversationText || "(none yet)"}
+"""
+
+PREVIOUSLY KNOWN FACTS (empty if this is the first extraction — merge with these, don't just overwrite):
+${JSON.stringify(previousFacts ?? {})}
+
+Update the fact sheet using ONLY information actually stated or strongly implied above.
+
+Return JSON:
+{
+  "summary": "string, 2-4 sentence natural-language summary of who they are so far, suitable to show directly to the user. Empty string if there's truly nothing to summarize yet.",
+  "birthdate": "string — their birthdate or age if mentioned, empty string if unknown",
+  "hobbies": ["string", "..."],
+  "taste": ["string", "... food/music/movie/other preferences they've mentioned"],
+  "surprises": "string — e.g. 'loves surprises', 'prefers no surprises', or empty string if unknown",
+  "dreams": ["string", "... aspirations or goals they've mentioned"],
+  "wishlist": ["string", "... things they've said they want"],
+  "fantasies": ["string", "... things they've expressed wanting to experience or do"],
+  "other": ["string", "... anything else notable that doesn't fit the categories above"]
+}`;
+}
+
+export const FACTS_JSON_SCHEMA = {
+  type: "object",
+  properties: {
+    summary: { type: "string" },
+    birthdate: { type: "string" },
+    hobbies: { type: "array", items: { type: "string" } },
+    taste: { type: "array", items: { type: "string" } },
+    surprises: { type: "string" },
+    dreams: { type: "array", items: { type: "string" } },
+    wishlist: { type: "array", items: { type: "string" } },
+    fantasies: { type: "array", items: { type: "string" } },
+    other: { type: "array", items: { type: "string" } },
+  },
+  required: [
+    "summary",
+    "birthdate",
+    "hobbies",
+    "taste",
+    "surprises",
+    "dreams",
+    "wishlist",
+    "fantasies",
+    "other",
+  ],
+};
+
+// ---------------------------------------------------------------------------
 // Style analysis (optional "what we noticed about your style" feature)
 // ---------------------------------------------------------------------------
 

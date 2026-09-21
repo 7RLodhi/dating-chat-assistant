@@ -11,6 +11,7 @@ import StylePanel from "./StylePanel";
 import ScreenshotUpload from "./ScreenshotUpload";
 import MatchAvatar from "./MatchAvatar";
 import NewMatchModal from "./NewMatchModal";
+import MatchFactsPanel from "./MatchFactsPanel";
 import { trackEvent } from "@/lib/analytics";
 import { Match, addMatch, getMatches, updateMatch } from "@/lib/matches";
 import {
@@ -20,13 +21,15 @@ import {
   incrementUsage,
 } from "@/lib/rateLimit";
 import { extractImageFromClipboard, useScreenshotUpload } from "@/lib/useScreenshotUpload";
-import { Goal, Language, Mode, SuggestResponse, Tone } from "@/lib/types";
+import { FactsResponse, Goal, Language, MatchFacts, Mode, SuggestResponse, Tone } from "@/lib/types";
 
 export default function AssistantApp() {
   const [matches, setMatches] = useState<Match[]>([]);
   const [activeMatchId, setActiveMatchId] = useState<string | null>(null);
   const [showNewMatchModal, setShowNewMatchModal] = useState(false);
   const [showBio, setShowBio] = useState(false);
+  const [showFacts, setShowFacts] = useState(false);
+  const [factsRefreshing, setFactsRefreshing] = useState(false);
 
   const [bio, setBio] = useState("");
   const [conversationText, setConversationText] = useState("");
@@ -175,6 +178,48 @@ export default function AssistantApp() {
     }
   }
 
+  // Runs alongside generation (not sequentially after it) to keep a living
+  // fact sheet about the match — see MatchFactsPanel and app/api/facts.
+  // Best-effort: failures here never surface as the main error banner.
+  async function refreshFacts(matchId: string, bioText: string, conversationTextValue: string) {
+    if (!bioText.trim() && !conversationTextValue.trim()) return;
+
+    const existing = matches.find((m) => m.id === matchId)?.facts;
+    const previousFacts: FactsResponse | undefined = existing
+      ? {
+          summary: existing.summary,
+          birthdate: existing.birthdate,
+          hobbies: existing.hobbies,
+          taste: existing.taste,
+          surprises: existing.surprises,
+          dreams: existing.dreams,
+          wishlist: existing.wishlist,
+          fantasies: existing.fantasies,
+          other: existing.other,
+        }
+      : undefined;
+
+    setFactsRefreshing(true);
+    try {
+      const res = await fetch("/api/facts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bio: bioText, conversationText: conversationTextValue, previousFacts }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Facts extraction failed.");
+
+      const updatedFacts: MatchFacts = { ...(data as FactsResponse), updatedAt: new Date().toISOString() };
+      updateMatch(matchId, { facts: updatedFacts });
+      setMatches((prev) => prev.map((m) => (m.id === matchId ? { ...m, facts: updatedFacts } : m)));
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("refreshFacts failed:", err);
+    } finally {
+      setFactsRefreshing(false);
+    }
+  }
+
   function handleGenerateClick() {
     runGenerate({
       mode: effectiveMode,
@@ -182,6 +227,9 @@ export default function AssistantApp() {
       profileText: bio,
       matchName: activeMatch?.name,
     });
+    if (activeMatchId) {
+      refreshFacts(activeMatchId, bio, conversationText);
+    }
   }
 
   function handleSelectMatch(match: Match) {
@@ -191,6 +239,7 @@ export default function AssistantApp() {
     setResult(null);
     setError(null);
     setShowBio(false);
+    setShowFacts(false);
   }
 
   function handleCreateMatch(name: string, matchBio: string) {
@@ -202,8 +251,10 @@ export default function AssistantApp() {
     setResult(null);
     setError(null);
     setShowBio(false);
+    setShowFacts(false);
     setShowNewMatchModal(false);
     runGenerate({ mode: "opener", profileText: matchBio, matchName: name });
+    refreshFacts(match.id, matchBio, "");
   }
 
   async function handleVote(
@@ -271,14 +322,26 @@ export default function AssistantApp() {
         <div className="space-y-5 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
           <div>
             <div className="flex items-center justify-between">
-              <button
-                type="button"
-                onClick={() => setShowBio((v) => !v)}
-                className="flex items-center gap-1 text-sm font-medium text-gray-700"
-              >
-                {activeMatch.name}'s bio
-                <span className="text-xs text-gray-400">{showBio ? "▲ Hide" : "▼ Show"}</span>
-              </button>
+              <div className="flex items-center gap-4">
+                <button
+                  type="button"
+                  onClick={() => setShowBio((v) => !v)}
+                  className="flex items-center gap-1 text-sm font-medium text-gray-700"
+                >
+                  {activeMatch.name}'s bio
+                  <span className="text-xs text-gray-400">{showBio ? "▲ Hide" : "▼ Show"}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowFacts((v) => !v)}
+                  className="flex items-center gap-1 text-sm font-medium text-gray-700"
+                >
+                  📋 Summary
+                  <span className="text-xs text-gray-400">
+                    {factsRefreshing ? "⏳" : showFacts ? "▲ Hide" : "▼ Show"}
+                  </span>
+                </button>
+              </div>
               {showBio && (
                 <ScreenshotUpload
                   uploading={profileUpload.uploading}
@@ -295,6 +358,11 @@ export default function AssistantApp() {
                 placeholder="Paste their bio, prompts/answers, or describe their photos"
                 className="mt-1.5 w-full rounded-lg border border-gray-300 p-3 text-sm focus:border-brand-500 focus:outline-none"
               />
+            )}
+            {showFacts && (
+              <div className="mt-1.5">
+                <MatchFactsPanel facts={activeMatch.facts ?? null} refreshing={factsRefreshing} />
+              </div>
             )}
           </div>
 
