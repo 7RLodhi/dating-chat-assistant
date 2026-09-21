@@ -115,6 +115,7 @@ export default function AssistantApp() {
   conversationUploadRef.current = conversationUpload;
   const profileUploadRef = useRef(profileUpload);
   profileUploadRef.current = profileUpload;
+  const chatScreenshotInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     function handlePaste(e: ClipboardEvent) {
@@ -388,16 +389,32 @@ export default function AssistantApp() {
             <ConversationComposer
               rows={conversationRows}
               onRowsChange={handleRowsChange}
-              screenshotUploading={conversationUpload.uploading}
-              onScreenshotFile={(file) => conversationUpload.processFile(file, "upload")}
               onClearChat={handleClearChat}
             />
             {conversationUpload.error && (
               <p className="mt-1 text-xs text-red-600">{conversationUpload.error}</p>
             )}
-            <p className="mt-1 text-xs text-gray-400">
-              Tip: Copy a message, then tap They said / You said to paste it.
-            </p>
+            <div className="mt-2 flex justify-center">
+              <input
+                ref={chatScreenshotInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = "";
+                  if (file) conversationUpload.processFile(file, "upload");
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => chatScreenshotInputRef.current?.click()}
+                disabled={conversationUpload.uploading}
+                className="rounded-full border border-gray-300 bg-white px-4 py-1.5 text-xs font-medium text-gray-700 hover:border-brand-400 hover:text-brand-600 disabled:opacity-60"
+              >
+                {conversationUpload.uploading ? "Reading screenshot…" : "📷 Upload Chat Screenshot"}
+              </button>
+            </div>
           </div>
 
           <div>
