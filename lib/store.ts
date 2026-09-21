@@ -107,8 +107,11 @@ const PUNS_FILE = path.join(process.cwd(), ".data", "name_puns.json");
 
 function seedPuns(): NamePun[] {
   const now = new Date().toISOString();
-  return NAME_PUN_SEEDS.map((s) => ({
-    id: randomUUID(),
+  // Stable ids (not random): on hosts without Supabase the seed list is
+  // regenerated in-memory on every request, so ids must be identical across
+  // invocations or votes can never match the id the list showed.
+  return NAME_PUN_SEEDS.map((s, i) => ({
+    id: `seed-${i}`,
     name: s.name,
     pun: s.pun,
     worked: 0,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { trackEvent } from "@/lib/analytics";
 import { NamePun, PunVote } from "@/lib/types";
 
@@ -21,6 +21,10 @@ function saveVote(id: string, vote: PunVote) {
   window.localStorage.setItem(VOTED_KEY, JSON.stringify({ ...getVotedMap(), [id]: vote }));
 }
 
+function punScore(p: NamePun): number {
+  return p.worked - p.notWorked;
+}
+
 export default function NamePunDirectory({ defaultQuery = "" }: { defaultQuery?: string }) {
   const [query, setQuery] = useState(defaultQuery);
   const [puns, setPuns] = useState<NamePun[]>([]);
@@ -32,6 +36,8 @@ export default function NamePunDirectory({ defaultQuery = "" }: { defaultQuery?:
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+  const punInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setVoted(getVotedMap());
@@ -60,8 +66,34 @@ export default function NamePunDirectory({ defaultQuery = "" }: { defaultQuery?:
     };
   }, [query]);
 
+  // Group puns by name (case-insensitive); puns within a group sorted by
+  // vote score, groups sorted alphabetically.
+  const groups = useMemo(() => {
+    const map = new Map<string, { displayName: string; puns: NamePun[] }>();
+    for (const p of puns) {
+      const key = p.name.trim().toLowerCase();
+      const group = map.get(key) ?? { displayName: p.name.trim(), puns: [] };
+      group.puns.push(p);
+      map.set(key, group);
+    }
+    for (const group of map.values()) {
+      group.puns.sort((a, b) => punScore(b) - punScore(a) || b.worked - a.worked);
+    }
+    return [...map.values()].sort((a, b) => a.displayName.localeCompare(b.displayName));
+  }, [puns]);
+
   async function handleVote(id: string, vote: PunVote) {
     if (voted[id]) return; // one vote per pun per browser, keeps signal clean
+    // Optimistic update so the tap feels instant; rolled back on failure.
+    const prev = puns;
+    setPuns((list) =>
+      list.map((p) =>
+        p.id === id
+          ? { ...p, worked: p.worked + (vote === "worked" ? 1 : 0), notWorked: p.notWorked + (vote === "notWorked" ? 1 : 0) }
+          : p
+      )
+    );
+    setVoted((map) => ({ ...map, [id]: vote }));
     try {
       const res = await fetch("/api/puns/vote", {
         method: "POST",
@@ -70,14 +102,26 @@ export default function NamePunDirectory({ defaultQuery = "" }: { defaultQuery?:
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || "Couldn't record your vote.");
-      setPuns((prev) => prev.map((p) => (p.id === id ? (data.pun as NamePun) : p)));
-      const next = { ...voted, [id]: vote };
-      setVoted(next);
+      setPuns((list) => list.map((p) => (p.id === id ? (data.pun as NamePun) : p)));
       saveVote(id, vote);
       trackEvent("pun_voted", { vote });
     } catch (err) {
+      setPuns(prev);
+      setVoted((map) => {
+        const next = { ...map };
+        delete next[id];
+        return next;
+      });
       setError(err instanceof Error ? err.message : "Something went wrong.");
     }
+  }
+
+  function handleAddForName(name: string) {
+    setNewName(name);
+    setFormError(null);
+    formRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    // Focus after scroll starts so the keyboard opens on the pun field.
+    setTimeout(() => punInputRef.current?.focus(), 350);
   }
 
   async function handleAdd(e: React.FormEvent) {
@@ -118,48 +162,76 @@ export default function NamePunDirectory({ defaultQuery = "" }: { defaultQuery?:
       {loading && <p className="text-xs text-gray-400">Loading puns…</p>}
       {error && <p className="text-xs text-red-600">{error}</p>}
 
-      {!loading && !error && puns.length === 0 && (
+      {!loading && !error && groups.length === 0 && (
         <p className="text-xs text-gray-400">
           No puns for that name yet — add the first one below! 👇
         </p>
       )}
 
       <div className="space-y-2">
-        {puns.map((p) => (
-          <div key={p.id} className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
-            <p className="text-sm font-semibold text-gray-900">{p.name}</p>
-            <p className="mt-0.5 text-sm text-gray-700">{p.pun}</p>
-            <div className="mt-2 flex items-center gap-2">
+        {groups.map((group) => (
+          <div
+            key={group.displayName.toLowerCase()}
+            className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-sm font-semibold text-gray-900">{group.displayName}</p>
               <button
                 type="button"
-                onClick={() => handleVote(p.id, "worked")}
-                disabled={!!voted[p.id]}
-                className={`rounded-full px-3 py-1 text-xs font-medium transition ${
-                  voted[p.id] === "worked"
-                    ? "bg-green-600 text-white"
-                    : "bg-green-600 text-white hover:bg-green-700 disabled:opacity-60"
-                }`}
+                onClick={() => handleAddForName(group.displayName)}
+                className="shrink-0 text-xs font-medium text-brand-600 hover:text-brand-700"
               >
-                ✓ Worked ({p.worked})
+                + Add Pun
               </button>
-              <button
-                type="button"
-                onClick={() => handleVote(p.id, "notWorked")}
-                disabled={!!voted[p.id]}
-                className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
-                  voted[p.id] === "notWorked"
-                    ? "border-gray-500 bg-gray-200 text-gray-700"
-                    : "border-gray-300 text-gray-500 hover:border-red-400 hover:text-red-600 disabled:opacity-60"
-                }`}
-              >
-                ✗ Didn&apos;t work for me ({p.notWorked})
-              </button>
+            </div>
+            <div className="mt-1.5 space-y-1.5">
+              {group.puns.map((p) => (
+                <div key={p.id} className="flex items-start gap-2">
+                  <p className="flex-1 text-sm leading-relaxed text-gray-700">{p.pun}</p>
+                  <div className="flex shrink-0 items-center gap-1 pt-0.5">
+                    <button
+                      type="button"
+                      aria-label="This worked for me"
+                      title="This worked for me"
+                      onClick={() => handleVote(p.id, "worked")}
+                      disabled={!!voted[p.id]}
+                      className={`rounded-md px-1 py-0.5 text-base leading-none transition ${
+                        voted[p.id] === "worked"
+                          ? "opacity-100"
+                          : "opacity-40 hover:opacity-80"
+                      } disabled:cursor-default`}
+                    >
+                      👍
+                    </button>
+                    <span className="min-w-4 text-center text-xs text-gray-500">{p.worked}</span>
+                    <button
+                      type="button"
+                      aria-label="This didn't work for me"
+                      title="This didn't work for me"
+                      onClick={() => handleVote(p.id, "notWorked")}
+                      disabled={!!voted[p.id]}
+                      className={`rounded-md px-1 py-0.5 text-base leading-none transition ${
+                        voted[p.id] === "notWorked"
+                          ? "opacity-100"
+                          : "opacity-40 hover:opacity-80"
+                      } disabled:cursor-default`}
+                    >
+                      👎
+                    </button>
+                    <span className="min-w-4 text-center text-xs text-gray-500">{p.notWorked}</span>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         ))}
       </div>
 
-      <form onSubmit={handleAdd} className="space-y-2 rounded-xl border border-dashed border-gray-300 p-3">
+      <form
+        ref={formRef}
+        onSubmit={handleAdd}
+        className="space-y-2 rounded-xl border border-dashed border-gray-300 p-3"
+      >
         <p className="text-sm font-medium text-gray-700">Know a good one? Add it 👇</p>
         <input
           type="text"
@@ -170,6 +242,7 @@ export default function NamePunDirectory({ defaultQuery = "" }: { defaultQuery?:
           className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm placeholder:italic placeholder:text-gray-400 focus:border-brand-500 focus:outline-none"
         />
         <input
+          ref={punInputRef}
           type="text"
           value={newPun}
           onChange={(e) => setNewPun(e.target.value)}
