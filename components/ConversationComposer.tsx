@@ -55,7 +55,7 @@ export default function ConversationComposer({
   return (
     <div className="space-y-3">
       {rows.length > 0 && (
-        <div className="max-h-56 space-y-1.5 overflow-y-auto rounded-lg border border-gray-200 bg-gray-50 p-2">
+        <div className="no-scrollbar max-h-56 space-y-1.5 overflow-y-auto rounded-lg border border-gray-200 bg-gray-50 p-2">
           {rows.map((row, i) => {
             const isMatch = row.speaker === "MATCH";
             return (
@@ -172,7 +172,7 @@ function RowEditor({ value, onChange }: { value: string; onChange: (v: string) =
       rows={1}
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="max-h-24 min-w-0 flex-1 resize-none overflow-y-auto rounded-md border border-gray-200 bg-white px-2 py-1 text-sm focus:border-brand-500 focus:outline-none"
+      className="no-scrollbar max-h-24 min-w-0 flex-1 resize-none overflow-y-auto rounded-md border border-gray-200 bg-white px-2 py-1 text-sm focus:border-brand-500 focus:outline-none"
     />
   );
 }

@@ -11,3 +11,14 @@ body {
   background-color: #fafafa;
   color: #1f2937;
 }
+
+/* Hide scrollbars while keeping scroll behavior (touch/wheel still work).
+   Used on chat-style surfaces where thin bars look like visual noise. */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
