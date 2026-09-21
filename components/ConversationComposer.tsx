@@ -61,32 +61,38 @@ export default function ConversationComposer({
     <div className="space-y-3">
       {rows.length > 0 && (
         <div className="max-h-56 space-y-1.5 overflow-y-auto rounded-lg border border-gray-200 bg-gray-50 p-2">
-          {rows.map((row, i) => (
-            <div key={i} className="flex items-center gap-2">
-              <span
-                className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                  row.speaker === "MATCH"
-                    ? "bg-gray-200 text-gray-700"
-                    : "bg-brand-100 text-brand-700"
-                }`}
-              >
-                {row.speaker === "MATCH" ? "They" : "You"}
-              </span>
-              <input
-                value={row.text}
-                onChange={(e) => updateRowText(i, e.target.value)}
-                className="flex-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-sm focus:border-brand-500 focus:outline-none"
-              />
-              <button
-                type="button"
-                onClick={() => removeRow(i)}
-                aria-label="Remove message"
-                className="shrink-0 text-gray-300 hover:text-red-500"
-              >
-                ✕
-              </button>
-            </div>
-          ))}
+          {rows.map((row, i) => {
+            const isMatch = row.speaker === "MATCH";
+            return (
+              <div key={i} className={`flex ${isMatch ? "justify-start" : "justify-end"}`}>
+                <div className="flex w-3/4 items-center gap-2">
+                  {isMatch && (
+                    <span className="shrink-0 rounded-full bg-gray-200 px-2 py-0.5 text-[10px] font-medium text-gray-700">
+                      They
+                    </span>
+                  )}
+                  <input
+                    value={row.text}
+                    onChange={(e) => updateRowText(i, e.target.value)}
+                    className="min-w-0 flex-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-sm focus:border-brand-500 focus:outline-none"
+                  />
+                  {!isMatch && (
+                    <span className="shrink-0 rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-medium text-brand-700">
+                      You
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => removeRow(i)}
+                    aria-label="Remove message"
+                    className="shrink-0 text-gray-300 hover:text-red-500"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
