@@ -4,6 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import { trackEvent } from "@/lib/analytics";
 import { ConversationRow } from "@/lib/conversationRows";
 
+// Replies get noticeably better with a few messages of context; below this
+// we nudge the user to add more instead of generating from almost nothing.
+const MIN_CONTEXT_ROWS = 4;
+
 export default function ConversationComposer({
   rows,
   onRowsChange,
@@ -17,6 +21,17 @@ export default function ConversationComposer({
   const [yourDraft, setYourDraft] = useState("");
   const [pastingSpeaker, setPastingSpeaker] = useState<"MATCH" | "USER" | null>(null);
   const [pasteError, setPasteError] = useState<string | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const prevCountRef = useRef(rows.length);
+
+  // Follow new messages as they arrive so the latest is always visible.
+  // Only scrolls when rows are added, never while typing or deleting.
+  useEffect(() => {
+    if (rows.length > prevCountRef.current) {
+      listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
+    }
+    prevCountRef.current = rows.length;
+  }, [rows.length]);
 
   function addRow(speaker: "MATCH" | "USER", text: string) {
     if (!text.trim()) return;
@@ -55,7 +70,10 @@ export default function ConversationComposer({
   return (
     <div className="space-y-3">
       {rows.length > 0 && (
-        <div className="no-scrollbar max-h-56 space-y-1.5 overflow-y-auto rounded-lg border border-gray-200 bg-gray-50 p-2">
+        <div
+          ref={listRef}
+          className="no-scrollbar max-h-56 space-y-1.5 overflow-y-auto rounded-lg border border-gray-200 bg-gray-50 p-2"
+        >
           {rows.map((row, i) => {
             const isMatch = row.speaker === "MATCH";
             return (
@@ -88,6 +106,13 @@ export default function ConversationComposer({
             );
           })}
         </div>
+      )}
+
+      {rows.length > 0 && rows.length < MIN_CONTEXT_ROWS && (
+        <p className="text-center text-xs text-gray-400">
+          Add {MIN_CONTEXT_ROWS - rows.length} more{" "}
+          {MIN_CONTEXT_ROWS - rows.length === 1 ? "message" : "messages"} for better replies ✨
+        </p>
       )}
 
       {rows.length > 0 && (
