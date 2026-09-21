@@ -11,7 +11,7 @@ import {
   buildOpenerUserPrompt,
   buildReplyUserPrompt,
 } from "@/lib/prompts";
-import { recordGeneration } from "@/lib/store";
+import { getTopPunForName, recordGeneration } from "@/lib/store";
 import { Goal, Language, SuggestRequestBody, SuggestResponse, Tone } from "@/lib/types";
 
 const VALID_TONES: Tone[] = ["playful", "sincere", "witty", "bold", "low_effort"];
@@ -67,6 +67,19 @@ export async function POST(req: NextRequest) {
 
   let namePunHint: string | undefined;
   if (mode === "opener" && matchName?.trim()) {
+    // Prefer a community-voted pun from the directory; fall back to the LLM
+    // check only when the directory has nothing for this name.
+    try {
+      const communityPun = await getTopPunForName(matchName.trim());
+      if (communityPun) {
+        namePunHint = communityPun.pun;
+      }
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("directory pun lookup failed, falling back to LLM:", err);
+    }
+  }
+  if (mode === "opener" && matchName?.trim() && !namePunHint) {
     try {
       const punResult = await callLLMForJSON<{ has_pun: boolean; pun_line: string }>({
         systemPrompt: NAME_PUN_SYSTEM_PROMPT,

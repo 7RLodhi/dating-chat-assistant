@@ -13,6 +13,7 @@ import ConversationComposer from "./ConversationComposer";
 import MatchAvatar from "./MatchAvatar";
 import NewMatchModal from "./NewMatchModal";
 import MatchFactsModal from "./MatchFactsModal";
+import NamePunDirectory from "./NamePunDirectory";
 import { trackEvent } from "@/lib/analytics";
 import { getDisplayAge } from "@/lib/ageUtils";
 import { ConversationRow, parseConversationText, serializeRows } from "@/lib/conversationRows";
@@ -35,6 +36,7 @@ export default function AssistantApp() {
   const [showFactsModal, setShowFactsModal] = useState(false);
   const [factsRefreshing, setFactsRefreshing] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showPunDirectory, setShowPunDirectory] = useState(false);
 
   const [bio, setBio] = useState("");
   const [conversationRows, setConversationRows] = useState<ConversationRow[]>([]);
@@ -479,6 +481,25 @@ export default function AssistantApp() {
           </div>
         </div>
       )}
+
+      <div className="mt-6 rounded-lg border border-gray-200">
+        <button
+          type="button"
+          onClick={() => setShowPunDirectory((v) => !v)}
+          className="flex w-full items-center justify-between px-3 py-2 text-sm font-medium text-gray-700"
+        >
+          <span>📖 Name pun directory</span>
+          <span className="text-xs text-gray-400">{showPunDirectory ? "▲ Hide" : "▼ Show"}</span>
+        </button>
+        {showPunDirectory && (
+          <div className="border-t border-gray-200 p-3">
+            <NamePunDirectory
+              key={activeMatch?.id ?? "none"}
+              defaultQuery={activeMatch?.name ?? ""}
+            />
+          </div>
+        )}
+      </div>
 
       <footer className="mt-10 text-center text-xs text-gray-400">
         This is a validation prototype. Conversation text is sent to an AI provider to

@@ -123,3 +123,24 @@ export interface FactsRequestBody {
   conversationText: string;
   previousFacts?: FactsResponse;
 }
+
+export interface NamePun {
+  id: string;
+  name: string;
+  pun: string;
+  worked: number;
+  notWorked: number;
+  createdAt: string;
+}
+
+export type PunVote = "worked" | "notWorked";
+
+export interface AddPunRequestBody {
+  name: string;
+  pun: string;
+}
+
+export interface VotePunRequestBody {
+  id: string;
+  vote: PunVote;
+}

@@ -49,6 +49,17 @@ create table if not exists waitlist (
   email text not null unique
 );
 
+-- Community name-pun directory: one row per submitted pun, with worked /
+-- not-worked vote counters. Served by /api/puns and /api/puns/vote.
+create table if not exists name_puns (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  name text not null,
+  pun text not null,
+  worked integer not null default 0,
+  not_worked integer not null default 0
+);
+
 -- If you already ran an earlier version of this schema, add the new columns
 -- instead of dropping the table:
 --   alter table generations add column if not exists style_applied boolean not null default false;
@@ -58,11 +69,14 @@ create table if not exists waitlist (
 alter table generations enable row level security;
 alter table feedback enable row level security;
 alter table waitlist enable row level security;
+alter table name_puns enable row level security;
 
 -- Helpful indexes for the analysis queries you'll actually run.
 create index if not exists idx_feedback_generation_id on feedback (generation_id);
 create index if not exists idx_generations_tone_goal on generations (tone, goal);
 create index if not exists idx_generations_created_at on generations (created_at);
+create index if not exists idx_name_puns_name on name_puns (name);
+create index if not exists idx_name_puns_worked on name_puns (worked desc);
 
 -- Convenience view: joins each feedback vote back to the tone/goal/mood
 -- that produced it, so "which tone+goal combos get thumbs up" is a simple
