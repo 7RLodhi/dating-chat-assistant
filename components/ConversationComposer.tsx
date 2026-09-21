@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import ScreenshotIconButton from "./ScreenshotIconButton";
+import { trackEvent } from "@/lib/analytics";
 import { ConversationRow } from "@/lib/conversationRows";
 
 export default function ConversationComposer({
@@ -17,10 +18,33 @@ export default function ConversationComposer({
 }) {
   const [theirDraft, setTheirDraft] = useState("");
   const [yourDraft, setYourDraft] = useState("");
+  const [pastingSpeaker, setPastingSpeaker] = useState<"MATCH" | "USER" | null>(null);
+  const [pasteError, setPasteError] = useState<string | null>(null);
 
   function addRow(speaker: "MATCH" | "USER", text: string) {
     if (!text.trim()) return;
     onRowsChange([...rows, { speaker, text: text.trim() }]);
+  }
+
+  async function handlePasteClick(speaker: "MATCH" | "USER") {
+    setPasteError(null);
+    setPastingSpeaker(speaker);
+    try {
+      const raw = await navigator.clipboard.readText();
+      const cleaned = raw.replace(/\s+/g, " ").trim();
+      if (!cleaned) {
+        setPasteError("Clipboard is empty — copy a message first, then tap paste.");
+        return;
+      }
+      addRow(speaker, cleaned);
+      trackEvent("clipboard_pasted", { speaker });
+    } catch {
+      setPasteError(
+        "Couldn't read the clipboard — allow paste access, copy the message again, and retry."
+      );
+    } finally {
+      setPastingSpeaker(null);
+    }
   }
 
   function removeRow(index: number) {
@@ -33,6 +57,25 @@ export default function ConversationComposer({
 
   return (
     <div className="space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={() => handlePasteClick("MATCH")}
+          disabled={pastingSpeaker !== null}
+          className="rounded-full border border-gray-300 bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:border-gray-400 disabled:opacity-60"
+        >
+          {pastingSpeaker === "MATCH" ? "Pasting…" : "📋 They said"}
+        </button>
+        <button
+          type="button"
+          onClick={() => handlePasteClick("USER")}
+          disabled={pastingSpeaker !== null}
+          className="rounded-full bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-60"
+        >
+          {pastingSpeaker === "USER" ? "Pasting…" : "You said 📋"}
+        </button>
+      </div>
+      {pasteError && <p className="text-xs text-red-600">{pasteError}</p>}
       {rows.length > 0 && (
         <div className="max-h-56 space-y-1.5 overflow-y-auto rounded-lg border border-gray-200 bg-gray-50 p-2">
           {rows.map((row, i) => (

@@ -378,8 +378,7 @@ export default function AssistantApp() {
               <p className="mt-1 text-xs text-red-600">{conversationUpload.error}</p>
             )}
             <p className="mt-1 text-xs text-gray-400">
-              Tip: Type a message and press Enter, or click the camera icon to paste/upload a
-              screenshot.
+              Tip: Copy a message, then tap They said / You said to paste it.
             </p>
           </div>
 
