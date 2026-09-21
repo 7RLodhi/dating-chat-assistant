@@ -26,7 +26,8 @@ create table if not exists generations (
   suggestions jsonb not null,
   model text not null,
   style_applied boolean not null default false,
-  via_screenshot boolean not null default false
+  via_screenshot boolean not null default false,
+  language text not null default 'auto' check (language in ('auto', 'english', 'hindi', 'hinglish'))
 );
 
 -- One row per thumbs up/down. Linked back to the generation that produced
@@ -52,6 +53,7 @@ create table if not exists waitlist (
 -- instead of dropping the table:
 --   alter table generations add column if not exists style_applied boolean not null default false;
 --   alter table generations add column if not exists via_screenshot boolean not null default false;
+--   alter table generations add column if not exists language text not null default 'auto';
 
 alter table generations enable row level security;
 alter table feedback enable row level security;
@@ -78,6 +80,7 @@ select
   g.goal,
   g.conversation_read ->> 'mood_label' as mood_label,
   g.style_applied,
-  g.via_screenshot
+  g.via_screenshot,
+  g.language
 from feedback f
 left join generations g on g.id = f.generation_id;

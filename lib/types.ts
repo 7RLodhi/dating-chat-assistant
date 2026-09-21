@@ -4,6 +4,8 @@ export type Goal = "get_a_reply" | "escalate_to_date" | "keep_it_light";
 
 export type Mode = "reply" | "opener";
 
+export type Language = "auto" | "english" | "hindi" | "hinglish";
+
 export type MoodLabel =
   | "high_interest"
   | "playful"
@@ -40,6 +42,8 @@ export interface SuggestRequestBody {
   extraContext?: string;
   /** Raw examples of messages the user has actually sent, used as a voice reference. */
   styleExamples?: string;
+  /** Defaults to "auto" (detect from the conversation/profile text) if omitted. */
+  language?: Language;
   /** Whether the input text currently came from screenshot OCR rather than manual paste. */
   viaScreenshot?: boolean;
 }

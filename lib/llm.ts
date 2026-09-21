@@ -253,6 +253,7 @@ Rules:
 - Ignore UI chrome: timestamps, status bar, "typing...", read receipts, keyboard, buttons.
 - If a message is split across multiple bubbles, keep them as separate lines.
 - If you can't confidently read a word, make your best guess rather than omitting it.
+- Transcribe in whatever language/script the messages are actually written in (English, Hindi/Devanagari, Hinglish in Roman script, etc.) — do NOT translate.
 - Output ONLY the transcribed lines in the format "[USER]: ..." or "[MATCH]: ...", nothing else — no commentary, no headers.`;
 
 const PROFILE_TRANSCRIBE_INSTRUCTION = `This image is a screenshot of a dating app profile (bio, prompts/answers, or similar). Transcribe the readable text content: bio text, prompt questions and their answers, and any captions. If a photo has no readable text, briefly describe it in one short line prefixed with "[photo]:" (e.g. "[photo]: hiking on a mountain trail").
@@ -261,6 +262,7 @@ Rules:
 - Preserve the order things appear top to bottom.
 - Ignore UI chrome: app buttons (like/pass icons), navigation bars, percentages, distance/age badges.
 - If you can't confidently read a word, make your best guess rather than omitting it.
+- Transcribe in whatever language/script the text is actually written in — do NOT translate.
 - Output ONLY the transcribed content, nothing else — no commentary, no headers.`;
 
 /**

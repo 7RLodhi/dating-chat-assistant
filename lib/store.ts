@@ -1,6 +1,6 @@
 import { appendJSONLine } from "./devStore";
 import { getSupabase, isSupabaseConfigured } from "./supabase";
-import { ConversationRead, Goal, Mode, Suggestion, Tone } from "./types";
+import { ConversationRead, Goal, Language, Mode, Suggestion, Tone } from "./types";
 
 // Single persistence layer for everything the v0 needs to log. If Supabase
 // is configured (SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY), records go
@@ -20,6 +20,7 @@ export interface GenerationRecord {
   model: string;
   styleApplied?: boolean;
   viaScreenshot?: boolean;
+  language?: Language;
 }
 
 export async function recordGeneration(record: GenerationRecord): Promise<void> {
@@ -37,6 +38,7 @@ export async function recordGeneration(record: GenerationRecord): Promise<void> 
       model: record.model,
       style_applied: record.styleApplied ?? false,
       via_screenshot: record.viaScreenshot ?? false,
+      language: record.language ?? "auto",
     });
     if (error) {
       // eslint-disable-next-line no-console

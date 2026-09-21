@@ -1,4 +1,4 @@
-import { Goal, Tone } from "./types";
+import { Goal, Language, Tone } from "./types";
 
 export const TONE_DESCRIPTIONS: Record<Tone, string> = {
   playful: "Lighthearted, teasing, a little silly. Uses humor. Low stakes.",
@@ -34,6 +34,21 @@ export const GOAL_OPTIONS: { value: Goal; label: string }[] = [
   { value: "keep_it_light", label: "Keep it light" },
 ];
 
+export const LANGUAGE_DESCRIPTIONS: Record<Language, string> = {
+  auto: "Detect the language/script the match is actually writing in from the conversation, and reply in that same language and script. If there isn't enough signal (e.g. no messages yet, or it's genuinely ambiguous), default to English.",
+  english: "Reply in English only.",
+  hindi: "Reply in Hindi, written in Devanagari script (e.g. \"अरे वाह, ये तो बहुत बढ़िया है\").",
+  hinglish:
+    "Reply in Hinglish: casual, code-mixed Hindi-English written in Roman/Latin script, the way most young urban Indians actually text on dating apps (e.g. \"arre yaar that's so cute\", \"kya kar rahe ho abhi\").",
+};
+
+export const LANGUAGE_OPTIONS: { value: Language; label: string }[] = [
+  { value: "auto", label: "Auto-detect" },
+  { value: "english", label: "English" },
+  { value: "hinglish", label: "Hinglish" },
+  { value: "hindi", label: "Hindi" },
+];
+
 export const SYSTEM_PROMPT = `You are a texting assistant that helps someone respond well in a dating app conversation. You suggest short, natural-sounding messages the user could send — you do not send anything yourself.
 
 Rules:
@@ -46,6 +61,7 @@ Rules:
 - Never invent facts about the match that are not present in the given context (e.g., do not assume a job, location, or interest that wasn't stated).
 - Keep each suggestion under 40 words.
 - If a "USER'S WRITING STYLE" reference is provided, match that voice — capitalization habits (e.g. all lowercase), punctuation (or lack of it), typical message length, emoji/slang habits, and recurring phrasing quirks — while still following the selected tone and goal for content and angle. The style reference governs *how* they write; tone/goal govern *what* they say.
+- Follow the LANGUAGE instruction for which language/script to write the suggestions in. Write naturally and idiomatically in that language — never a stiff, word-for-word translation of an English sentence. For Hinglish specifically, code-mix the way real speakers do (mixing Hindi and English words/grammar in one sentence), not just English with a few Hindi words sprinkled in, and not full Hindi either.
 - Output must be valid JSON matching the provided schema. No text outside the JSON.`;
 
 export function buildReplyUserPrompt(params: {
@@ -54,8 +70,9 @@ export function buildReplyUserPrompt(params: {
   goal: Goal;
   extraContext?: string;
   styleExamples?: string;
+  language?: Language;
 }): string {
-  const { conversationText, tone, goal, extraContext, styleExamples } = params;
+  const { conversationText, tone, goal, extraContext, styleExamples, language = "auto" } = params;
   return `Generate reply suggestions for an ongoing dating app conversation.
 
 CONVERSATION (most recent messages last; [USER] is the person asking for help, [MATCH] is the other person):
@@ -65,6 +82,7 @@ ${conversationText}
 
 DESIRED TONE: ${tone} — ${TONE_DESCRIPTIONS[tone]}
 GOAL: ${goal} — ${GOAL_DESCRIPTIONS[goal]}
+LANGUAGE: ${language} — ${LANGUAGE_DESCRIPTIONS[language]}
 ${buildStyleSection(styleExamples)}
 Additional context from user (optional, may be empty): "${extraContext ?? ""}"
 
@@ -93,8 +111,13 @@ export function buildOpenerUserPrompt(params: {
   tone: Tone;
   goal: Goal;
   styleExamples?: string;
+  language?: Language;
 }): string {
-  const { profileText, tone, goal, styleExamples } = params;
+  const { profileText, tone, goal, styleExamples, language = "auto" } = params;
+  const openerLanguageNote =
+    language === "auto"
+      ? `${LANGUAGE_DESCRIPTIONS.auto} There's no conversation yet, so only the profile info below can give a signal (e.g. a bio written in Hindi/Hinglish) — otherwise default to English.`
+      : LANGUAGE_DESCRIPTIONS[language];
   return `Generate opening message suggestions for a dating app match.
 
 MATCH'S PROFILE INFO (as provided by the user; may be partial or empty):
@@ -105,6 +128,7 @@ ${profileText}
 
 DESIRED TONE: ${tone} — ${TONE_DESCRIPTIONS[tone]}
 GOAL: ${goal} — ${GOAL_DESCRIPTIONS[goal]}
+LANGUAGE: ${language} — ${openerLanguageNote}
 ${buildStyleSection(styleExamples)}
 Generate 5 distinct opening message options. Vary the approach across the 5 (don't make them all near-duplicates of each other). At least one should directly reference something specific from the profile info if any was given.
 

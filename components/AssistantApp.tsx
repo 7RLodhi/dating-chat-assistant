@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import ToneSelector from "./ToneSelector";
 import GoalSelector from "./GoalSelector";
+import LanguageSelector from "./LanguageSelector";
 import MoodBadge from "./MoodBadge";
 import SuggestionCard from "./SuggestionCard";
 import PaywallModal from "./PaywallModal";
@@ -16,7 +17,7 @@ import {
   incrementUsage,
 } from "@/lib/rateLimit";
 import { extractImageFromClipboard, useScreenshotUpload } from "@/lib/useScreenshotUpload";
-import { Goal, SuggestResponse, Tone } from "@/lib/types";
+import { Goal, Language, SuggestResponse, Tone } from "@/lib/types";
 
 type Mode = "reply" | "opener";
 
@@ -27,6 +28,7 @@ export default function AssistantApp() {
   const [extraContext, setExtraContext] = useState("");
   const [tone, setTone] = useState<Tone>("witty");
   const [goal, setGoal] = useState<Goal>("get_a_reply");
+  const [language, setLanguage] = useState<Language>("auto");
   const [styleExamples, setStyleExamples] = useState("");
   const [viaScreenshot, setViaScreenshot] = useState(false);
 
@@ -92,7 +94,7 @@ export default function AssistantApp() {
     setLoading(true);
     setError(null);
     setResult(null);
-    trackEvent("generate_requested", { mode, tone, goal });
+    trackEvent("generate_requested", { mode, tone, goal, language });
 
     try {
       const res = await fetch("/api/suggest", {
@@ -105,6 +107,7 @@ export default function AssistantApp() {
           extraContext,
           tone,
           goal,
+          language,
           styleExamples: styleExamples.trim() || undefined,
           viaScreenshot,
         }),
@@ -118,11 +121,11 @@ export default function AssistantApp() {
       setResult(data as SuggestResponse);
       const newCount = incrementUsage();
       setUsageToday(newCount);
-      trackEvent("generate_succeeded", { mode, tone, goal });
+      trackEvent("generate_succeeded", { mode, tone, goal, language });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Something went wrong.";
       setError(message);
-      trackEvent("generate_failed", { mode, tone, goal, message });
+      trackEvent("generate_failed", { mode, tone, goal, language, message });
     } finally {
       setLoading(false);
     }
@@ -257,6 +260,7 @@ export default function AssistantApp() {
 
         <ToneSelector value={tone} onChange={setTone} />
         <GoalSelector value={goal} onChange={setGoal} />
+        <LanguageSelector value={language} onChange={setLanguage} />
         <StylePanel onExamplesChange={setStyleExamples} />
 
         <button

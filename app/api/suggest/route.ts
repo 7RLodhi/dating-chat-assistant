@@ -9,10 +9,11 @@ import {
   buildReplyUserPrompt,
 } from "@/lib/prompts";
 import { recordGeneration } from "@/lib/store";
-import { Goal, SuggestRequestBody, SuggestResponse, Tone } from "@/lib/types";
+import { Goal, Language, SuggestRequestBody, SuggestResponse, Tone } from "@/lib/types";
 
 const VALID_TONES: Tone[] = ["playful", "sincere", "witty", "bold", "low_effort"];
 const VALID_GOALS: Goal[] = ["get_a_reply", "escalate_to_date", "keep_it_light"];
+const VALID_LANGUAGES: Language[] = ["auto", "english", "hindi", "hinglish"];
 const MAX_INPUT_CHARS = 4000;
 
 export async function POST(req: NextRequest) {
@@ -24,6 +25,7 @@ export async function POST(req: NextRequest) {
   }
 
   const { mode, tone, goal, extraContext, styleExamples, viaScreenshot } = body;
+  const language: Language = body.language ?? "auto";
 
   if (mode !== "reply" && mode !== "opener") {
     return NextResponse.json(
@@ -36,6 +38,9 @@ export async function POST(req: NextRequest) {
   }
   if (!VALID_GOALS.includes(goal)) {
     return NextResponse.json({ error: "Invalid goal." }, { status: 400 });
+  }
+  if (!VALID_LANGUAGES.includes(language)) {
+    return NextResponse.json({ error: "Invalid language." }, { status: 400 });
   }
 
   const textField = mode === "reply" ? body.conversationText : body.profileText;
@@ -65,8 +70,9 @@ export async function POST(req: NextRequest) {
           goal,
           extraContext,
           styleExamples,
+          language,
         })
-      : buildOpenerUserPrompt({ profileText: textField, tone, goal, styleExamples });
+      : buildOpenerUserPrompt({ profileText: textField, tone, goal, styleExamples, language });
 
   try {
     const result = await callLLMForJSON<SuggestResponse>({
@@ -99,6 +105,7 @@ export async function POST(req: NextRequest) {
       model: describeModel(),
       styleApplied: Boolean(styleExamples?.trim()),
       viaScreenshot: Boolean(viaScreenshot),
+      language,
     }).catch((err) => {
       // eslint-disable-next-line no-console
       console.error("recordGeneration failed:", err);
