@@ -88,7 +88,7 @@ export default function ConversationComposer({
         </div>
       )}
 
-      <div className="space-y-1.5">
+      <div className="w-3/4 space-y-1.5">
         <ComposeField
           value={theirDraft}
           onChange={setTheirDraft}
@@ -112,7 +112,7 @@ export default function ConversationComposer({
         </div>
       </div>
 
-      <div className="space-y-1.5">
+      <div className="ml-auto w-3/4 space-y-1.5">
         <ComposeField
           value={yourDraft}
           onChange={setYourDraft}
