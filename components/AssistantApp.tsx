@@ -12,12 +12,13 @@ import ScreenshotIconButton from "./ScreenshotIconButton";
 import ConversationComposer from "./ConversationComposer";
 import MatchAvatar from "./MatchAvatar";
 import NewMatchModal from "./NewMatchModal";
+import EditMatchModal from "./EditMatchModal";
 import MatchFactsModal from "./MatchFactsModal";
 import NamePunDirectory from "./NamePunDirectory";
 import { trackEvent } from "@/lib/analytics";
 import { getDisplayAge } from "@/lib/ageUtils";
 import { ConversationRow, parseConversationText, serializeRows } from "@/lib/conversationRows";
-import { Match, addMatch, getMatches, updateMatch } from "@/lib/matches";
+import { Match, addMatch, deleteMatch, getMatches, updateMatch } from "@/lib/matches";
 import {
   getDailyLimit,
   getUsageToday,
@@ -36,6 +37,7 @@ export default function AssistantApp() {
   const [matches, setMatches] = useState<Match[]>([]);
   const [activeMatchId, setActiveMatchId] = useState<string | null>(null);
   const [showNewMatchModal, setShowNewMatchModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [showBio, setShowBio] = useState(false);
   const [showFactsModal, setShowFactsModal] = useState(false);
   const [factsRefreshing, setFactsRefreshing] = useState(false);
@@ -285,6 +287,31 @@ export default function AssistantApp() {
     refreshFacts(match.id, matchBio, "");
   }
 
+  function handleSaveMatchName(newName: string) {
+    if (!activeMatchId) return;
+    updateMatch(activeMatchId, { name: newName });
+    setMatches((prev) => prev.map((m) => (m.id === activeMatchId ? { ...m, name: newName } : m)));
+    setShowEditModal(false);
+    trackEvent("match_renamed");
+  }
+
+  function handleDeleteMatch() {
+    if (!activeMatchId) return;
+    const id = activeMatchId;
+    deleteMatch(id);
+    const remaining = matches.filter((m) => m.id !== id);
+    setMatches(remaining);
+    const next = remaining.length > 0 ? remaining[remaining.length - 1] : null;
+    setActiveMatchId(next ? next.id : null);
+    setBio(next ? next.bio : "");
+    setConversationRows(next ? parseConversationText(next.conversationText) : []);
+    setResult(null);
+    setError(null);
+    setShowBio(false);
+    setShowEditModal(false);
+    trackEvent("match_deleted");
+  }
+
   async function handleVote(
     suggestionText: string,
     suggestionTone: string,
@@ -380,6 +407,15 @@ export default function AssistantApp() {
               >
                 📋 Summary
                 {factsRefreshing && <span className="text-xs text-gray-400">⏳</span>}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowEditModal(true)}
+                title="Rename or delete this match"
+                aria-label="Rename or delete this match"
+                className="text-sm text-gray-400 hover:text-gray-600"
+              >
+                ✎
               </button>
             </div>
             {showBio && (
@@ -571,6 +607,15 @@ export default function AssistantApp() {
           matchName={activeMatch.name}
           facts={activeMatch.facts ?? null}
           refreshing={factsRefreshing}
+        />
+      )}
+      {activeMatch && (
+        <EditMatchModal
+          open={showEditModal}
+          initialName={activeMatch.name}
+          onClose={() => setShowEditModal(false)}
+          onSave={handleSaveMatchName}
+          onDelete={handleDeleteMatch}
         />
       )}
     </div>

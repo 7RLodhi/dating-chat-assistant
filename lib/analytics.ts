@@ -21,6 +21,8 @@ type EventName =
   | "limit_reset"
   | "chat_cleared"
   | "speaker_swapped"
+  | "match_renamed"
+  | "match_deleted"
   | "pun_searched"
   | "pun_added"
   | "pun_voted";
