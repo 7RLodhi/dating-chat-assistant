@@ -286,6 +286,35 @@ export async function voteNamePun(id: string, vote: PunVote): Promise<NamePun | 
   return { ...entry };
 }
 
+export interface OutcomeRecord {
+  generationId?: string;
+  matchName?: string;
+  suggestionText: string;
+  replied: boolean;
+}
+
+export async function recordOutcome(record: OutcomeRecord): Promise<void> {
+  if (isSupabaseConfigured()) {
+    const supabase = getSupabase()!;
+    const { error } = await supabase.from("outcomes").insert({
+      generation_id: record.generationId ?? null,
+      match_name: record.matchName ?? null,
+      suggestion_text: record.suggestionText,
+      replied: record.replied,
+    });
+    if (error) {
+      // eslint-disable-next-line no-console
+      console.error("Supabase insert (outcomes) failed:", error.message);
+    }
+    return;
+  }
+
+  await appendJSONLine("outcomes.jsonl", {
+    ...record,
+    receivedAt: new Date().toISOString(),
+  });
+}
+
 export async function recordWaitlistEmail(
   email: string
 ): Promise<{ ok: boolean; alreadyExists?: boolean }> {

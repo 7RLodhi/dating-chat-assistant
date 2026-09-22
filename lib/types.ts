@@ -78,6 +78,22 @@ export interface OcrResponse {
   text: string;
 }
 
+export interface PendingOutcome {
+  id: string;
+  generationId?: string;
+  matchId?: string;
+  matchName: string;
+  suggestionText: string;
+  copiedAt: string; // ISO timestamp
+}
+
+export interface OutcomeRequestBody {
+  generationId?: string;
+  matchName?: string;
+  suggestionText: string;
+  replied: boolean;
+}
+
 export type OccupationType = "student" | "professional" | "";
 export type EducationLevel = "school" | "college" | "";
 

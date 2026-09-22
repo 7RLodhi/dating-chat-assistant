@@ -49,6 +49,17 @@ create table if not exists waitlist (
   email text not null unique
 );
 
+-- "Did they reply?" outcomes: one row per answered nudge. This is the
+-- reply-rate dataset — the strongest validation signal for the product.
+create table if not exists outcomes (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  generation_id uuid references generations(id) on delete set null,
+  match_name text,
+  suggestion_text text not null,
+  replied boolean not null
+);
+
 -- Community name-pun directory: one row per submitted pun, with worked /
 -- not-worked vote counters. Served by /api/puns and /api/puns/vote.
 create table if not exists name_puns (
@@ -70,6 +81,7 @@ alter table generations enable row level security;
 alter table feedback enable row level security;
 alter table waitlist enable row level security;
 alter table name_puns enable row level security;
+alter table outcomes enable row level security;
 
 -- Helpful indexes for the analysis queries you'll actually run.
 create index if not exists idx_feedback_generation_id on feedback (generation_id);

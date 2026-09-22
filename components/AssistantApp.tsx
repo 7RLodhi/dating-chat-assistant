@@ -16,6 +16,18 @@ import EditMatchModal from "./EditMatchModal";
 import MatchFactsModal from "./MatchFactsModal";
 import NamePunDirectory from "./NamePunDirectory";
 import { trackEvent } from "@/lib/analytics";
+import OutcomeNudge from "./OutcomeNudge";
+import {
+  enqueueOutcome,
+  getDueOutcomes,
+  resolveOutcome,
+  snoozeOutcome,
+} from "@/lib/outcomes";
+import {
+  SAMPLE_MATCH_BIO,
+  SAMPLE_MATCH_CONVERSATION,
+  SAMPLE_MATCH_NAME,
+} from "@/lib/sampleMatch";
 import { getDisplayAge } from "@/lib/ageUtils";
 import { ConversationRow, parseConversationText, serializeRows } from "@/lib/conversationRows";
 import { Match, addMatch, deleteMatch, getMatches, updateMatch } from "@/lib/matches";
@@ -31,7 +43,7 @@ import {
   readClipboardContent,
   useScreenshotUpload,
 } from "@/lib/useScreenshotUpload";
-import { FactsResponse, Goal, Language, MatchFacts, Mode, SuggestResponse, Tone } from "@/lib/types";
+import { FactsResponse, Goal, Language, MatchFacts, Mode, PendingOutcome, SuggestResponse, Tone } from "@/lib/types";
 
 export default function AssistantApp() {
   const [matches, setMatches] = useState<Match[]>([]);
@@ -44,6 +56,7 @@ export default function AssistantApp() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showPunDirectory, setShowPunDirectory] = useState(false);
   const [pasteScreenshotError, setPasteScreenshotError] = useState<string | null>(null);
+  const [dueOutcomes, setDueOutcomes] = useState<PendingOutcome[]>([]);
 
   const [bio, setBio] = useState("");
   const [conversationRows, setConversationRows] = useState<ConversationRow[]>([]);
@@ -78,7 +91,17 @@ export default function AssistantApp() {
       setBio(mostRecent.bio);
       setConversationRows(parseConversationText(mostRecent.conversationText));
     }
+    setDueOutcomes(getDueOutcomes());
   }, []);
+
+  function refreshDueOutcomes() {
+    setDueOutcomes(getDueOutcomes());
+  }
+
+  const shownOutcomeId = dueOutcomes[0]?.id;
+  useEffect(() => {
+    if (shownOutcomeId) trackEvent("outcome_prompt_shown");
+  }, [shownOutcomeId]);
 
   function handleBioChange(value: string) {
     setBio(value);
@@ -295,9 +318,8 @@ export default function AssistantApp() {
     trackEvent("match_renamed");
   }
 
-  function handleDeleteMatch() {
-    if (!activeMatchId) return;
-    const id = activeMatchId;
+  function handleDeleteMatch(id: string = activeMatchId ?? "") {
+    if (!id) return;
     deleteMatch(id);
     const remaining = matches.filter((m) => m.id !== id);
     setMatches(remaining);
@@ -350,6 +372,66 @@ export default function AssistantApp() {
     trackEvent("chat_cleared");
   }
 
+  function handleCopySuggestion(text: string) {
+    if (!activeMatch) return;
+    enqueueOutcome({
+      generationId: result?.id,
+      matchId: activeMatchId ?? undefined,
+      matchName: activeMatch.name,
+      suggestionText: text,
+    });
+    trackEvent("suggestion_copied", { mode: effectiveMode });
+    refreshDueOutcomes();
+  }
+
+  async function handleOutcomeAnswer(replied: boolean) {
+    const outcome = dueOutcomes[0];
+    if (!outcome) return;
+    trackEvent("outcome_recorded", { replied });
+    try {
+      await fetch("/api/outcome", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          generationId: outcome.generationId,
+          matchName: outcome.matchName,
+          suggestionText: outcome.suggestionText,
+          replied,
+        }),
+      });
+    } catch {
+      // Best-effort logging; the answer still counts locally.
+    }
+    resolveOutcome(outcome.id);
+    refreshDueOutcomes();
+  }
+
+  function handleOutcomeSnooze() {
+    const outcome = dueOutcomes[0];
+    if (!outcome) return;
+    snoozeOutcome(outcome.id);
+    refreshDueOutcomes();
+  }
+
+  function handleTrySample() {
+    const existingDemo = matches.find((m) => m.demo);
+    if (existingDemo) {
+      handleSelectMatch(existingDemo);
+      return;
+    }
+    const demo = addMatch(SAMPLE_MATCH_NAME, SAMPLE_MATCH_BIO, true);
+    updateMatch(demo.id, { conversationText: SAMPLE_MATCH_CONVERSATION });
+    const withConversation: Match = { ...demo, conversationText: SAMPLE_MATCH_CONVERSATION };
+    setMatches((prev) => [...prev, withConversation]);
+    setActiveMatchId(demo.id);
+    setBio(SAMPLE_MATCH_BIO);
+    setConversationRows(parseConversationText(SAMPLE_MATCH_CONVERSATION));
+    setResult(null);
+    setError(null);
+    setShowBio(false);
+    trackEvent("sample_match_created");
+  }
+
   const remaining = Math.max(dailyLimit - usageToday, 0);
 
   return (
@@ -383,10 +465,40 @@ export default function AssistantApp() {
         </button>
       </div>
 
+      {dueOutcomes.length > 0 && (
+        <OutcomeNudge
+          outcome={dueOutcomes[0]}
+          onAnswer={handleOutcomeAnswer}
+          onSnooze={handleOutcomeSnooze}
+        />
+      )}
+
+      {activeMatch?.demo && (
+        <div className="mb-4 flex items-center justify-between gap-2 rounded-xl border border-brand-200 bg-brand-50 px-3 py-2">
+          <p className="text-xs text-brand-800">
+            Sample conversation — try generating, then add your own match with + New.
+          </p>
+          <button
+            type="button"
+            onClick={() => handleDeleteMatch(activeMatch.id)}
+            className="shrink-0 text-xs font-medium text-brand-600 hover:text-red-600"
+          >
+            Delete sample
+          </button>
+        </div>
+      )}
+
       {!activeMatch ? (
         <div className="rounded-2xl border border-dashed border-gray-300 bg-white p-8 text-center text-sm text-gray-500">
           Add your first match with "+ New" to get started — we'll ask for their name and bio
           and generate opening lines right away.
+          <button
+            type="button"
+            onClick={handleTrySample}
+            className="mx-auto mt-4 block rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
+          >
+            ✨ Try a sample conversation
+          </button>
         </div>
       ) : (
         <div className="space-y-5 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
@@ -563,6 +675,7 @@ export default function AssistantApp() {
                 key={i}
                 suggestion={s}
                 onVote={(vote) => handleVote(s.text, String(s.tone), s.approach, vote)}
+                onCopied={(text) => handleCopySuggestion(text)}
               />
             ))}
           </div>

@@ -6,9 +6,11 @@ import { Suggestion } from "@/lib/types";
 export default function SuggestionCard({
   suggestion,
   onVote,
+  onCopied,
 }: {
   suggestion: Suggestion;
   onVote: (vote: "up" | "down") => void;
+  onCopied?: (text: string) => void;
 }) {
   const [copied, setCopied] = useState(false);
   const [voted, setVoted] = useState<"up" | "down" | null>(null);
@@ -18,6 +20,7 @@ export default function SuggestionCard({
       await navigator.clipboard.writeText(suggestion.text);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
+      onCopied?.(suggestion.text);
     } catch {
       // Clipboard API can fail (permissions, insecure context); fail silently.
     }

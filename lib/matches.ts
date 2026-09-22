@@ -14,6 +14,8 @@ export interface Match {
   conversationText: string;
   createdAt: string;
   facts?: MatchFacts;
+  /** First-run sample conversation — bannered in the UI, deletable like any match. */
+  demo?: boolean;
 }
 
 const STORAGE_KEY = "dca_matches_v0";
@@ -33,13 +35,14 @@ function saveMatches(matches: Match[]): void {
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(matches));
 }
 
-export function addMatch(name: string, bio: string): Match {
+export function addMatch(name: string, bio: string, demo = false): Match {
   const match: Match = {
     id: crypto.randomUUID(),
     name: name.trim(),
     bio: bio.trim(),
     conversationText: "",
     createdAt: new Date().toISOString(),
+    ...(demo ? { demo: true as const } : {}),
   };
   saveMatches([...getMatches(), match]);
   return match;
@@ -47,7 +50,7 @@ export function addMatch(name: string, bio: string): Match {
 
 export function updateMatch(
   id: string,
-  patch: Partial<Pick<Match, "name" | "bio" | "conversationText" | "facts">>
+  patch: Partial<Pick<Match, "name" | "bio" | "conversationText" | "facts" | "demo">>
 ): void {
   saveMatches(getMatches().map((m) => (m.id === id ? { ...m, ...patch } : m)));
 }

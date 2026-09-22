@@ -25,7 +25,10 @@ type EventName =
   | "match_deleted"
   | "pun_searched"
   | "pun_added"
-  | "pun_voted";
+  | "pun_voted"
+  | "outcome_prompt_shown"
+  | "outcome_recorded"
+  | "sample_match_created";
 
 export function trackEvent(name: EventName, props: Record<string, unknown> = {}) {
   const key = process.env.NEXT_PUBLIC_POSTHOG_KEY;
