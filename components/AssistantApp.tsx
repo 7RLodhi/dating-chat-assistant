@@ -17,11 +17,13 @@ import MatchFactsModal from "./MatchFactsModal";
 import NamePunDirectory from "./NamePunDirectory";
 import { trackEvent } from "@/lib/analytics";
 import OutcomeNudge from "./OutcomeNudge";
+import TasteHint from "./TasteHint";
+import { recordTasteVote, summarizeTaste } from "@/lib/tasteProfile";
 import {
   enqueueOutcome,
   getDueOutcomes,
   resolveOutcome,
-  snoozeOutcome,
+  snoozeOutcomeForVisit,
 } from "@/lib/outcomes";
 import {
   SAMPLE_MATCH_BIO,
@@ -57,6 +59,7 @@ export default function AssistantApp() {
   const [showPunDirectory, setShowPunDirectory] = useState(false);
   const [pasteScreenshotError, setPasteScreenshotError] = useState<string | null>(null);
   const [dueOutcomes, setDueOutcomes] = useState<PendingOutcome[]>([]);
+  const [tasteVersion, setTasteVersion] = useState(0);
 
   const [bio, setBio] = useState("");
   const [conversationRows, setConversationRows] = useState<ConversationRow[]>([]);
@@ -89,13 +92,18 @@ export default function AssistantApp() {
       const mostRecent = loaded[loaded.length - 1];
       setActiveMatchId(mostRecent.id);
       setBio(mostRecent.bio);
-      setConversationRows(parseConversationText(mostRecent.conversationText));
+      const loadedRows = parseConversationText(mostRecent.conversationText);
+      setConversationRows(loadedRows);
+      evaluateOutcomes(mostRecent.id, loadedRows.length);
     }
-    setDueOutcomes(getDueOutcomes());
   }, []);
 
+  function evaluateOutcomes(matchId: string | null, rowCount: number) {
+    setDueOutcomes(getDueOutcomes(matchId, rowCount));
+  }
+
   function refreshDueOutcomes() {
-    setDueOutcomes(getDueOutcomes());
+    evaluateOutcomes(activeMatchId, conversationRows.length);
   }
 
   const shownOutcomeId = dueOutcomes[0]?.id;
@@ -113,6 +121,7 @@ export default function AssistantApp() {
     setConversationRows(rows);
     setViaScreenshot(fromScreenshot);
     if (activeMatchId) updateMatch(activeMatchId, { conversationText: serializeRows(rows) });
+    evaluateOutcomes(activeMatchId, rows.length);
   }
 
   function handleRowsChange(rows: ConversationRow[]) {
@@ -219,6 +228,7 @@ export default function AssistantApp() {
           language,
           styleExamples: styleExamples.trim() || undefined,
           viaScreenshot,
+          tasteProfile: summarizeTaste()?.summary,
         }),
       });
 
@@ -290,10 +300,12 @@ export default function AssistantApp() {
   function handleSelectMatch(match: Match) {
     setActiveMatchId(match.id);
     setBio(match.bio);
-    setConversationRows(parseConversationText(match.conversationText));
+    const selectedRows = parseConversationText(match.conversationText);
+    setConversationRows(selectedRows);
     setResult(null);
     setError(null);
     setShowBio(false);
+    evaluateOutcomes(match.id, selectedRows.length);
   }
 
   function handleCreateMatch(name: string, matchBio: string) {
@@ -341,6 +353,8 @@ export default function AssistantApp() {
     vote: "up" | "down"
   ) {
     trackEvent("suggestion_voted", { vote, tone: suggestionTone, approach });
+    recordTasteVote({ tone: suggestionTone, text: suggestionText, vote });
+    setTasteVersion((v) => v + 1);
     try {
       await fetch("/api/feedback", {
         method: "POST",
@@ -379,6 +393,7 @@ export default function AssistantApp() {
       matchId: activeMatchId ?? undefined,
       matchName: activeMatch.name,
       suggestionText: text,
+      rowsAtCopy: conversationRows.length,
     });
     trackEvent("suggestion_copied", { mode: effectiveMode });
     refreshDueOutcomes();
@@ -409,7 +424,7 @@ export default function AssistantApp() {
   function handleOutcomeSnooze() {
     const outcome = dueOutcomes[0];
     if (!outcome) return;
-    snoozeOutcome(outcome.id);
+    snoozeOutcomeForVisit(outcome.id);
     refreshDueOutcomes();
   }
 
@@ -613,6 +628,7 @@ export default function AssistantApp() {
           </div>
 
           <ToneSelector value={tone} onChange={setTone} />
+          <TasteHint refreshKey={tasteVersion} />
 
           <div className="rounded-lg border border-gray-200">
             <button

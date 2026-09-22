@@ -32,9 +32,8 @@ export default function OutcomeNudge({
   return (
     <div className="mb-4 rounded-2xl border border-brand-200 bg-brand-50 p-4 shadow-sm">
       <p className="text-sm font-medium text-gray-900">
-        Did {outcome.matchName || "your match"} reply? 💬
+        Did “{snippet(outcome.suggestionText)}” worked well for {outcome.matchName || "your match"}?
       </p>
-      <p className="mt-1 text-xs italic text-gray-500">“{snippet(outcome.suggestionText)}”</p>
       <div className="mt-3 flex items-center gap-2">
         <button
           type="button"

@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
   }
 
-  const { mode, tone, goal, extraContext, styleExamples, viaScreenshot, matchName } = body;
+  const { mode, tone, goal, extraContext, styleExamples, viaScreenshot, matchName, tasteProfile } = body;
   const language: Language = body.language ?? "auto";
 
   if (mode !== "reply" && mode !== "opener") {
@@ -107,8 +107,9 @@ export async function POST(req: NextRequest) {
           extraContext,
           styleExamples,
           language,
+          tasteProfile,
         })
-      : buildOpenerUserPrompt({ profileText: textField, tone, goal, styleExamples, language, namePunHint });
+      : buildOpenerUserPrompt({ profileText: textField, tone, goal, styleExamples, language, namePunHint, tasteProfile });
 
   try {
     const result = await callLLMForJSON<SuggestResponse>({

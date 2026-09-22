@@ -48,6 +48,8 @@ export interface SuggestRequestBody {
   viaScreenshot?: boolean;
   /** Match's name, mode "opener" only — enables an optional name-pun suggestion. */
   matchName?: string;
+  /** Client-computed taste summary from the user's past votes (see lib/tasteProfile). */
+  tasteProfile?: string;
 }
 
 export interface FeedbackRequestBody {
@@ -85,6 +87,8 @@ export interface PendingOutcome {
   matchName: string;
   suggestionText: string;
   copiedAt: string; // ISO timestamp
+  /** Conversation row count when copied — nudge fires once the chat grows past this. */
+  rowsAtCopy?: number;
 }
 
 export interface OutcomeRequestBody {

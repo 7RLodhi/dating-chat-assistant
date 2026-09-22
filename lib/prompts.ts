@@ -62,6 +62,7 @@ Rules:
 - Never invent facts about the match that are not present in the given context (e.g., do not assume a job, location, or interest that wasn't stated).
 - Keep each suggestion under 40 words.
 - If a "USER'S WRITING STYLE" reference is provided, match that voice — capitalization habits (e.g. all lowercase), punctuation (or lack of it), typical message length, emoji/slang habits, and recurring phrasing quirks — while still following the selected tone and goal for content and angle. The style reference governs *how* they write; tone/goal govern *what* they say.
+- If a "LEARNED TASTE" section is provided, it summarizes what this user demonstrably likes based on their own past votes: prefer the liked patterns and avoid the disliked ones, while the selected tone/goal still set the overall direction.
 - Follow the LANGUAGE instruction for which language/script to write the suggestions in. Write naturally and idiomatically in that language — never a stiff, word-for-word translation of an English sentence. For Hinglish specifically, code-mix the way real speakers do (mixing Hindi and English words/grammar in one sentence), not just English with a few Hindi words sprinkled in, and not full Hindi either.
 - Output must be valid JSON matching the provided schema. No text outside the JSON.`;
 
@@ -72,8 +73,9 @@ export function buildReplyUserPrompt(params: {
   extraContext?: string;
   styleExamples?: string;
   language?: Language;
+  tasteProfile?: string;
 }): string {
-  const { conversationText, tone, goal, extraContext, styleExamples, language = "auto" } = params;
+  const { conversationText, tone, goal, extraContext, styleExamples, language = "auto", tasteProfile } = params;
   return `Generate reply suggestions for an ongoing dating app conversation.
 
 CONVERSATION (most recent messages last; [USER] is the person asking for help, [MATCH] is the other person):
@@ -85,6 +87,7 @@ DESIRED TONE: ${tone} — ${TONE_DESCRIPTIONS[tone]}
 GOAL: ${goal} — ${GOAL_DESCRIPTIONS[goal]}
 LANGUAGE: ${language} — ${LANGUAGE_DESCRIPTIONS[language]}
 ${buildStyleSection(styleExamples)}
+${buildTasteSection(tasteProfile)}
 Additional context from user (optional, may be empty): "${extraContext ?? ""}"
 
 Generate 5 distinct reply options that [USER] could send next. Vary the approach (e.g., a question, a playful callback, a direct statement, a joke) — do not make all 5 minor rewordings of each other. At least one should be a question that invites a real answer (not yes/no) where appropriate.
@@ -115,8 +118,9 @@ export function buildOpenerUserPrompt(params: {
   language?: Language;
   /** A ready-to-adapt name-pun opener line, precomputed by buildNamePunPrompt — see route.ts. */
   namePunHint?: string;
+  tasteProfile?: string;
 }): string {
-  const { profileText, tone, goal, styleExamples, language = "auto", namePunHint } = params;
+  const { profileText, tone, goal, styleExamples, language = "auto", namePunHint, tasteProfile } = params;
   const openerLanguageNote =
     language === "auto"
       ? `${LANGUAGE_DESCRIPTIONS.auto} There's no conversation yet, so only the profile info below can give a signal (e.g. a bio written in Hindi/Hinglish) — otherwise default to English.`
@@ -137,6 +141,7 @@ DESIRED TONE: ${tone} — ${TONE_DESCRIPTIONS[tone]}
 GOAL: ${goal} — ${GOAL_DESCRIPTIONS[goal]}
 LANGUAGE: ${language} — ${openerLanguageNote}
 ${buildStyleSection(styleExamples)}
+${buildTasteSection(tasteProfile)}
 Generate 5 distinct opening message options. Vary the approach across the 5 (don't make them all near-duplicates of each other). At least one should directly reference something specific from the profile info if any was given.
 
 Return JSON matching this schema:
@@ -150,6 +155,14 @@ Return JSON matching this schema:
     }
   ]
 }`;
+}
+
+function buildTasteSection(tasteProfile?: string): string {
+  if (!tasteProfile || !tasteProfile.trim()) return "";
+  return `
+${tasteProfile.trim()}
+Apply these as refinements while the selected tone/goal above still set the overall direction.
+`;
 }
 
 function buildStyleSection(styleExamples?: string): string {
