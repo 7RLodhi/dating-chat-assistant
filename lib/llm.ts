@@ -252,6 +252,7 @@ Rules:
 - Preserve message order top to bottom.
 - Ignore UI chrome: timestamps, status bar, "typing...", read receipts, keyboard, buttons.
 - If a message is split across multiple bubbles, keep them as separate lines.
+- Quoted replies: if a bubble contains a quoted/replied-to message (usually smaller or dimmer text above the main message, sometimes with a reply indicator or vertical bar), split it into its own line. In a 1:1 chat the quote is virtually always the OTHER person's words, so label it with the opposite speaker of the enclosing bubble and prefix it with "(quoted) ". Example: your right-side bubble quoting the match becomes two lines: "[MATCH]: (quoted) original words here" followed by "[USER]: your reply here".
 - If you can't confidently read a word, make your best guess rather than omitting it.
 - Transcribe in whatever language/script the messages are actually written in (English, Hindi/Devanagari, Hinglish in Roman script, etc.) — do NOT translate.
 - Output ONLY the transcribed lines in the format "[USER]: ..." or "[MATCH]: ...", nothing else — no commentary, no headers.`;
