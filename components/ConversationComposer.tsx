@@ -83,6 +83,14 @@ export default function ConversationComposer({
     onRowsChange(rows.map((r, i) => (i === index ? { ...r, text } : r)));
   }
 
+  function toggleSpeaker(index: number) {
+    const row = rows[index];
+    if (!row) return;
+    const next = row.speaker === "MATCH" ? "USER" : "MATCH";
+    onRowsChange(rows.map((r, i) => (i === index ? { ...r, speaker: next } : r)));
+    trackEvent("speaker_swapped", { to: next });
+  }
+
   return (
     <div className="space-y-3">
       {rows.length > 0 && (
@@ -98,18 +106,28 @@ export default function ConversationComposer({
               <div key={i} className={`flex ${isMatch ? "justify-start" : "justify-end"}`}>
                 <div className="flex w-3/4 items-center gap-2">
                   {isMatch && (
-                    <span className="shrink-0 rounded-full bg-gray-200 px-2 py-0.5 text-[10px] font-medium text-gray-700">
+                    <button
+                      type="button"
+                      onClick={() => toggleSpeaker(i)}
+                      title="Tap to swap: mark as sent by you"
+                      className="shrink-0 rounded-full bg-gray-200 px-2 py-0.5 text-[10px] font-medium text-gray-700 hover:ring-1 hover:ring-gray-400"
+                    >
                       They
-                    </span>
+                    </button>
                   )}
                   <RowEditor
                     value={row.text}
                     onChange={(text) => updateRowText(i, text)}
                   />
                   {!isMatch && (
-                    <span className="shrink-0 rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-medium text-brand-700">
+                    <button
+                      type="button"
+                      onClick={() => toggleSpeaker(i)}
+                      title="Tap to swap: mark as sent by them"
+                      className="shrink-0 rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-medium text-brand-700 hover:ring-1 hover:ring-brand-400"
+                    >
                       You
-                    </span>
+                    </button>
                   )}
                   <button
                     type="button"
@@ -147,7 +165,8 @@ export default function ConversationComposer({
       )}
 
       {rows.length > 0 && (
-        <div className="flex justify-end">
+        <div className="flex items-center justify-between">
+          <p className="text-[11px] text-gray-400">Tap They / You to swap sides</p>
           <button
             type="button"
             onClick={onClearChat}

@@ -20,6 +20,7 @@ type EventName =
   | "clipboard_pasted"
   | "limit_reset"
   | "chat_cleared"
+  | "speaker_swapped"
   | "pun_searched"
   | "pun_added"
   | "pun_voted";
