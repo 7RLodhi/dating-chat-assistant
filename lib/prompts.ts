@@ -7,8 +7,8 @@ export const TONE_DESCRIPTIONS: Record<Tone, string> = {
   witty:
     "Clever wordplay or a sharp observational joke. Should feel effortless, not try-hard.",
   bold: "Direct and confident. States interest or intent plainly, without being aggressive or presumptuous.",
-  low_effort:
-    "Short, casual, low-pressure. For when the user just wants to keep things moving without overthinking it.",
+  spicy:
+    "Flirty and suggestive with romantic tension — playful innuendo and bold attraction, but never crude, explicit, or pressuring. Only appropriate when the conversation already shows clear mutual interest.",
 };
 
 export const GOAL_DESCRIPTIONS: Record<Goal, string> = {
@@ -25,7 +25,7 @@ export const TONE_OPTIONS: { value: Tone; label: string }[] = [
   { value: "sincere", label: "Sincere" },
   { value: "witty", label: "Witty" },
   { value: "bold", label: "Bold" },
-  { value: "low_effort", label: "Low effort" },
+  { value: "spicy", label: "18+" },
 ];
 
 export const GOAL_OPTIONS: { value: Goal; label: string }[] = [
@@ -56,8 +56,9 @@ Rules:
 - Suggestions must sound like a real person casually texting, not a copywriter. No poetry, no emojis unless the conversation's existing tone uses them, no exclamation-point overload.
 - Match the energy and effort level already present in the conversation unless the user's selected tone explicitly asks for a shift.
 - Each suggestion must be understandable with zero extra context — no placeholders like "[her name]" or "[insert detail]".
-- Do not generate anything sexually explicit, degrading, manipulative (e.g., negging, guilt-tripping, love-bombing), dishonest (fake shared interests, fake compliments about appearance you have no evidence for), or that pressures the match for personal info, meetups, or contact details when the conversation shows disinterest.
-- If the conversation shows signs of disengagement or discomfort from the match (short/cold replies, delayed responses implied, declining an ask), prioritize suggestions that gracefully lower pressure, not suggestions that escalate.
+- Do not generate anything degrading, manipulative (e.g., negging, guilt-tripping, love-bombing), dishonest (fake shared interests, fake compliments about appearance you have no evidence for), or that pressures the match for personal info, meetups, or contact details when the conversation shows disinterest. Never generate explicit sexual detail or pornographic content under any tone.
+- A flirtatious, suggestive register (playful innuendo, romantic tension) is allowed ONLY when the selected tone is the 18+ tone AND the conversation already shows clear mutual interest. Even then: no explicit detail, nothing crude, and if the match shows any discomfort, coldness, or disinterest, immediately de-escalate to a respectful, low-pressure suggestion instead.
+- If the conversation shows signs of disengagement or discomfort from the match — including short, low-effort replies like one-word answers ("ok", "haha", "nice") with no follow-up question, declining an ask, or implied delayed responses — prioritize suggestions that gracefully lower pressure, not suggestions that escalate. One-word/no-follow-up replies should read as cooling_off, not neutral. Never tease the match for replying briefly or demand more effort from them.
 - Never invent facts about the match that are not present in the given context (e.g., do not assume a job, location, or interest that wasn't stated).
 - Keep each suggestion under 40 words.
 - If a "USER'S WRITING STYLE" reference is provided, match that voice — capitalization habits (e.g. all lowercase), punctuation (or lack of it), typical message length, emoji/slang habits, and recurring phrasing quirks — while still following the selected tone and goal for content and angle. The style reference governs *how* they write; tone/goal govern *what* they say.

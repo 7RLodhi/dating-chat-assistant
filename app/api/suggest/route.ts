@@ -14,7 +14,7 @@ import {
 import { getTopPunForName, recordGeneration } from "@/lib/store";
 import { Goal, Language, SuggestRequestBody, SuggestResponse, Tone } from "@/lib/types";
 
-const VALID_TONES: Tone[] = ["playful", "sincere", "witty", "bold", "low_effort"];
+const VALID_TONES: Tone[] = ["playful", "sincere", "witty", "bold", "spicy"];
 const VALID_GOALS: Goal[] = ["get_a_reply", "escalate_to_date", "keep_it_light"];
 const VALID_LANGUAGES: Language[] = ["auto", "english", "hindi", "hinglish"];
 const MAX_INPUT_CHARS = 4000;
