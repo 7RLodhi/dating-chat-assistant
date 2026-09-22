@@ -23,6 +23,7 @@ export default function ConversationComposer({
   const [pasteError, setPasteError] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const prevCountRef = useRef(rows.length);
+  const [showScrollBottom, setShowScrollBottom] = useState(false);
 
   // Follow new messages as they arrive so the latest is always visible.
   // Only scrolls when rows are added, never while typing or deleting.
@@ -32,6 +33,21 @@ export default function ConversationComposer({
     }
     prevCountRef.current = rows.length;
   }, [rows.length]);
+
+  function updateScrollButton() {
+    const el = listRef.current;
+    if (!el) return;
+    setShowScrollBottom(el.scrollHeight - el.scrollTop - el.clientHeight > 24);
+  }
+
+  // Keep the chevron state correct as rows grow, shrink, or re-render.
+  useEffect(() => {
+    updateScrollButton();
+  });
+
+  function scrollToBottom() {
+    listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
+  }
 
   function addRow(speaker: "MATCH" | "USER", text: string) {
     if (!text.trim()) return;
@@ -70,10 +86,12 @@ export default function ConversationComposer({
   return (
     <div className="space-y-3">
       {rows.length > 0 && (
-        <div
-          ref={listRef}
-          className="no-scrollbar max-h-56 space-y-1.5 overflow-y-auto rounded-lg border border-gray-200 bg-gray-50 p-2"
-        >
+        <div className="relative">
+          <div
+            ref={listRef}
+            onScroll={updateScrollButton}
+            className="max-h-56 space-y-1.5 overflow-y-auto rounded-lg border border-gray-200 bg-gray-50 p-2"
+          >
           {rows.map((row, i) => {
             const isMatch = row.speaker === "MATCH";
             return (
@@ -105,6 +123,19 @@ export default function ConversationComposer({
               </div>
             );
           })}
+          </div>
+          {showScrollBottom && (
+            <button
+              type="button"
+              onClick={scrollToBottom}
+              aria-label="Scroll to latest message"
+              className="absolute bottom-2 right-2 flex h-7 w-7 items-center justify-center rounded-full bg-white text-gray-500 shadow-md hover:text-brand-600"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="h-4 w-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 9l6 6 6-6" />
+              </svg>
+            </button>
+          )}
         </div>
       )}
 
