@@ -54,11 +54,14 @@ export default function NamePunDirectory({ defaultQuery = "" }: { defaultQuery?:
     }
   }, []);
 
+  // Results (and the Request button) appear only after 3+ characters —
+  // avoids noisy single-letter matches. The directory opens prefilled with
+  // the active match's name, so that still shows instantly.
+  const canSearch = query.trim().length > 2;
+
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    // No query → no list. Results appear on search only (the directory opens
-    // prefilled with the active match's name, so that still shows instantly).
-    if (!query.trim()) {
+    if (!query.trim() || query.trim().length <= 2) {
       setPuns([]);
       setLoading(false);
       setError(null);
@@ -207,7 +210,7 @@ export default function NamePunDirectory({ defaultQuery = "" }: { defaultQuery?:
       {loading && <p className="text-xs text-gray-400">Loading puns…</p>}
       {error && <p className="text-xs text-red-600">{error}</p>}
 
-      {!loading && !error && groups.length === 0 && query.trim() && (
+      {!loading && !error && groups.length === 0 && canSearch && (
         <div className="space-y-2 text-center">
           <p className="text-xs text-gray-400">No puns for that name yet —</p>
           {requestedNames.includes(query.trim().toLowerCase()) ? (
@@ -228,9 +231,9 @@ export default function NamePunDirectory({ defaultQuery = "" }: { defaultQuery?:
         </div>
       )}
 
-      {!loading && !error && groups.length === 0 && !query.trim() && (
+      {!loading && !error && groups.length === 0 && !canSearch && (
         <p className="text-xs text-gray-400">
-          Search a name above to browse puns — or add a new one below! 👇
+          Type at least 3 letters to search — or add a new one below! 👇
         </p>
       )}
 
