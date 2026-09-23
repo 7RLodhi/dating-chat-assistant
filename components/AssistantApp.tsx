@@ -646,14 +646,16 @@ export default function AssistantApp() {
             )}
           </div>
 
-          <button
-            type="button"
-            onClick={handleGenerateClick}
-            disabled={!canSubmit}
-            className="w-full rounded-lg bg-brand-600 px-4 py-2.5 font-medium text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {loading ? "Thinking..." : "Generate reply suggestions"}
-          </button>
+          <div className="sticky bottom-2 z-10 rounded-xl bg-white/85 p-1 shadow-lg backdrop-blur-sm md:static md:rounded-none md:bg-transparent md:p-0 md:shadow-none md:backdrop-blur-none">
+            <button
+              type="button"
+              onClick={handleGenerateClick}
+              disabled={!canSubmit}
+              className="w-full rounded-lg bg-brand-600 px-4 py-2.5 font-medium text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {loading ? "Thinking..." : "Generate reply suggestions"}
+            </button>
+          </div>
 
           <div className="flex items-center justify-center gap-2 text-xs text-gray-400">
             <span>

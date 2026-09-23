@@ -42,6 +42,14 @@ export default function NamePunDirectory({ defaultQuery = "" }: { defaultQuery?:
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const punInputRef = useRef<HTMLInputElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  // Focus search on open so mobile opens the keyboard right away.
+  // preventScroll avoids yanking the page on desktop; iOS Safari may still
+  // refuse keyboard for async focus (platform limitation, no workaround).
+  useEffect(() => {
+    searchRef.current?.focus({ preventScroll: true });
+  }, []);
 
   useEffect(() => {
     setVoted(getVotedMap());
@@ -200,6 +208,7 @@ export default function NamePunDirectory({ defaultQuery = "" }: { defaultQuery?:
   return (
     <div className="space-y-4">
       <input
+        ref={searchRef}
         type="text"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
