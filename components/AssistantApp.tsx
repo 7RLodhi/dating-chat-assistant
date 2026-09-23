@@ -312,7 +312,7 @@ export default function AssistantApp() {
     evaluateOutcomes(match.id, selectedRows.length);
   }
 
-  function handleCreateMatch(name: string, matchBio: string) {
+  function handleCreateMatch(name: string, matchBio: string, generate: boolean) {
     const match = addMatch(name, matchBio);
     setMatches((prev) => [...prev, match]);
     setActiveMatchId(match.id);
@@ -322,8 +322,10 @@ export default function AssistantApp() {
     setError(null);
     setShowBio(false);
     setShowNewMatchModal(false);
-    runGenerate({ mode: "opener", profileText: matchBio, matchName: name });
-    refreshFacts(match.id, matchBio, "");
+    if (generate) {
+      runGenerate({ mode: "opener", profileText: matchBio, matchName: name });
+      refreshFacts(match.id, matchBio, "");
+    }
   }
 
   function handleSaveMatchName(newName: string) {
@@ -741,10 +743,7 @@ export default function AssistantApp() {
         </button>
         {showPunDirectory && (
           <div className="border-t border-gray-200 p-3">
-            <NamePunDirectory
-              key={activeMatch?.id ?? "none"}
-              defaultQuery={activeMatch?.name ?? ""}
-            />
+            <NamePunDirectory key={activeMatch?.id ?? "none"} />
           </div>
         )}
       </div>

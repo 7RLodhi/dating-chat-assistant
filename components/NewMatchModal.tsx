@@ -11,7 +11,7 @@ export default function NewMatchModal({
 }: {
   open: boolean;
   onClose: () => void;
-  onCreate: (name: string, bio: string) => void;
+  onCreate: (name: string, bio: string, generate: boolean) => void;
 }) {
   const [name, setName] = useState("");
   const [bio, setBio] = useState("");
@@ -38,7 +38,14 @@ export default function NewMatchModal({
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) return;
-    onCreate(name.trim(), bio.trim());
+    onCreate(name.trim(), bio.trim(), true);
+    setName("");
+    setBio("");
+  }
+
+  function handleAlreadyMatched() {
+    if (!name.trim()) return;
+    onCreate(name.trim(), bio.trim(), false);
     setName("");
     setBio("");
   }
@@ -94,15 +101,24 @@ export default function NewMatchModal({
             {bioUpload.error && <p className="mt-1 text-xs text-red-600">{bioUpload.error}</p>}
           </div>
           <p className="text-xs text-gray-400">
-            We'll generate opening lines right away — including a pun on their name if a natural
-            one exists.
+            Generate Opening Lines creates openers right away — including a pun on their name if
+            a natural one exists. Already Matched skips to the conversation screen so you can
+            paste your chat instead.
           </p>
           <button
             type="submit"
             disabled={!name.trim()}
             className="w-full rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
           >
-            Create & Generate opening lines
+            Generate Opening Lines
+          </button>
+          <button
+            type="button"
+            onClick={handleAlreadyMatched}
+            disabled={!name.trim()}
+            className="w-full rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:border-brand-400 hover:text-brand-600 disabled:opacity-50"
+          >
+            Already Matched
           </button>
         </form>
       </div>
