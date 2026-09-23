@@ -651,19 +651,21 @@ export default function AssistantApp() {
               type="button"
               onClick={handleGenerateClick}
               disabled={!canSubmit}
-              className="w-full rounded-lg bg-brand-600 px-4 py-2.5 font-medium text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
+              className="w-full rounded-lg bg-brand-600 px-4 py-2.5 font-medium leading-tight text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {loading ? "Thinking..." : "Generate reply suggestions"}
+              <span className="block">{loading ? "Thinking..." : "Generate reply suggestions"}</span>
+              {remaining < dailyLimit && (
+                <span className="mt-0.5 block text-xs font-normal opacity-80">
+                  {remaining > 0
+                    ? `${remaining} of ${dailyLimit} left today`
+                    : "Free limit reached for today"}
+                </span>
+              )}
             </button>
           </div>
 
-          <div className="flex items-center justify-center gap-2 text-xs text-gray-400">
-            <span>
-              {remaining > 0
-                ? `${remaining} of ${dailyLimit} free suggestions left today`
-                : "Free limit reached for today"}
-            </span>
-            {remaining === 0 && (
+          {remaining === 0 && (
+            <div className="flex items-center justify-center gap-2 text-xs text-gray-400">
               <button
                 type="button"
                 onClick={handleResetClick}
@@ -676,8 +678,8 @@ export default function AssistantApp() {
               >
                 {isAndroid && !isInstalled ? "📲 Reset limit" : "Reset limit"}
               </button>
-            )}
-          </div>
+            </div>
+          )}
           {resetHint && (
             <p className="mt-1 text-center text-xs text-gray-500">{resetHint}</p>
           )}
