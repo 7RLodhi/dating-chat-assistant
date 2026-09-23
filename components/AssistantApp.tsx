@@ -8,10 +8,10 @@ import MoodBadge from "./MoodBadge";
 import SuggestionCard from "./SuggestionCard";
 import PaywallModal from "./PaywallModal";
 import StylePanel from "./StylePanel";
-import ScreenshotIconButton from "./ScreenshotIconButton";
 import ConversationComposer from "./ConversationComposer";
 import MatchAvatar from "./MatchAvatar";
 import NewMatchModal from "./NewMatchModal";
+import BioModal from "./BioModal";
 import EditMatchModal from "./EditMatchModal";
 import MatchFactsModal from "./MatchFactsModal";
 import NamePunDirectory from "./NamePunDirectory";
@@ -54,7 +54,7 @@ export default function AssistantApp() {
   const [activeMatchId, setActiveMatchId] = useState<string | null>(null);
   const [showNewMatchModal, setShowNewMatchModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
-  const [showBio, setShowBio] = useState(false);
+  const [showBioModal, setShowBioModal] = useState(false);
   const [showFactsModal, setShowFactsModal] = useState(false);
   const [factsRefreshing, setFactsRefreshing] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -115,10 +115,11 @@ export default function AssistantApp() {
     if (shownOutcomeId) trackEvent("outcome_prompt_shown");
   }, [shownOutcomeId]);
 
-  function handleBioChange(value: string) {
-    setBio(value);
-    setViaScreenshot(false);
-    if (activeMatchId) updateMatch(activeMatchId, { bio: value });
+  function handleSaveBio(draft: string, fromScreenshot: boolean) {
+    setBio(draft);
+    setViaScreenshot(fromScreenshot);
+    if (activeMatchId) updateMatch(activeMatchId, { bio: draft });
+    setShowBioModal(false);
   }
 
   function persistRows(rows: ConversationRow[], fromScreenshot: boolean) {
@@ -139,10 +140,7 @@ export default function AssistantApp() {
     persistRows(parsed.length > 0 ? [...conversationRows, ...parsed] : conversationRows, true);
   }, "conversation");
 
-  const profileUpload = useScreenshotUpload((text) => {
-    handleBioChange(text);
-    setViaScreenshot(true);
-  }, "profile");
+
 
   // Lets you paste (Ctrl+V) a screenshot anywhere on the page, not just while
   // focused in a specific field. Pasted images always go to the conversation
@@ -308,7 +306,7 @@ export default function AssistantApp() {
     setConversationRows(selectedRows);
     setResult(null);
     setError(null);
-    setShowBio(false);
+    setShowBioModal(false);
     evaluateOutcomes(match.id, selectedRows.length);
   }
 
@@ -320,7 +318,7 @@ export default function AssistantApp() {
     setConversationRows([]);
     setResult(null);
     setError(null);
-    setShowBio(false);
+    setShowBioModal(false);
     setShowNewMatchModal(false);
     if (generate) {
       runGenerate({ mode: "opener", profileText: matchBio, matchName: name });
@@ -347,7 +345,7 @@ export default function AssistantApp() {
     setConversationRows(next ? parseConversationText(next.conversationText) : []);
     setResult(null);
     setError(null);
-    setShowBio(false);
+    setShowBioModal(false);
     setShowEditModal(false);
     trackEvent("match_deleted");
   }
@@ -464,7 +462,7 @@ export default function AssistantApp() {
     setConversationRows(parseConversationText(SAMPLE_MATCH_CONVERSATION));
     setResult(null);
     setError(null);
-    setShowBio(false);
+    setShowBioModal(false);
     trackEvent("sample_match_created");
   }
 
@@ -538,53 +536,32 @@ export default function AssistantApp() {
         </div>
       ) : (
         <div className="space-y-5 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-          <div>
-            <div className="flex items-center gap-4">
-              <button
-                type="button"
-                onClick={() => setShowBio((v) => !v)}
-                className="flex items-center gap-1 text-sm font-medium text-gray-700"
-              >
-                {activeMatch.name}'s bio
-                <span className="text-xs text-gray-400">{showBio ? "▲ Hide" : "▼ Show"}</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowFactsModal(true)}
-                className="flex items-center gap-1 text-sm font-medium text-gray-700"
-              >
-                📋 Summary
-                {factsRefreshing && <span className="text-xs text-gray-400">⏳</span>}
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowEditModal(true)}
-                title="Rename or delete this match"
-                aria-label="Rename or delete this match"
-                className="text-sm text-gray-400 hover:text-gray-600"
-              >
-                ✎
-              </button>
-            </div>
-            {showBio && (
-              <div className="relative mt-1.5">
-                <textarea
-                  value={bio}
-                  onChange={(e) => handleBioChange(e.target.value)}
-                  rows={3}
-                  placeholder="Paste their bio, prompts/answers, or describe their photos"
-                  className="w-full rounded-lg border border-gray-300 p-3 pr-9 text-sm placeholder:italic placeholder:text-gray-400 focus:border-brand-500 focus:outline-none"
-                />
-                <ScreenshotIconButton
-                  uploading={profileUpload.uploading}
-                  onFileSelected={(file) => profileUpload.processFile(file, "upload")}
-                  className="absolute bottom-2 right-2 h-7 w-7"
-                />
-                {profileUpload.error && (
-                  <p className="mt-1 text-xs text-red-600">{profileUpload.error}</p>
-                )}
-              </div>
-            )}
+          <div className="flex items-center gap-4">
+            <button
+              type="button"
+              onClick={() => setShowBioModal(true)}
+              title="View and edit bio"
+              className="flex items-center gap-1 text-sm font-medium text-gray-700"
+            >
+              {activeMatch.name}'s bio
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowFactsModal(true)}
+              className="flex items-center gap-1 text-sm font-medium text-gray-700"
+            >
+              📋 Summary
+              {factsRefreshing && <span className="text-xs text-gray-400">⏳</span>}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowEditModal(true)}
+              title="Rename or delete this match"
+              aria-label="Rename or delete this match"
+              className="text-sm text-gray-400 hover:text-gray-600"
+            >
+              ✎
+            </button>
           </div>
 
           <div>
@@ -777,6 +754,15 @@ export default function AssistantApp() {
           onClose={() => setShowEditModal(false)}
           onSave={handleSaveMatchName}
           onDelete={handleDeleteMatch}
+        />
+      )}
+      {activeMatch && (
+        <BioModal
+          open={showBioModal}
+          matchName={activeMatch.name}
+          initialBio={bio}
+          onClose={() => setShowBioModal(false)}
+          onSave={handleSaveBio}
         />
       )}
     </div>
