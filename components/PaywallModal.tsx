@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { trackEvent } from "@/lib/analytics";
+import { usePwaInstall } from "@/lib/pwa";
 
 export default function PaywallModal({
   open,
@@ -14,8 +15,19 @@ export default function PaywallModal({
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [installing, setInstalling] = useState(false);
+  const { isAndroid, isInstalled, canInstall, promptInstall } = usePwaInstall();
 
   if (!open) return null;
+
+  async function handleInstall() {
+    setInstalling(true);
+    try {
+      await promptInstall();
+    } finally {
+      setInstalling(false);
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -84,6 +96,35 @@ export default function PaywallModal({
                 {submitting ? "Joining..." : "Get early access"}
               </button>
             </form>
+            <div className="mt-4 rounded-xl border border-brand-200 bg-brand-50 p-3">
+              {isInstalled ? (
+                <p className="text-center text-xs text-brand-800">
+                  ✓ App installed — your daily reset is unlocked below.
+                </p>
+              ) : (
+                <>
+                  <p className="text-center text-xs font-medium text-gray-700">
+                    📲 Install the app — it unlocks your daily limit reset
+                  </p>
+                  {canInstall ? (
+                    <button
+                      type="button"
+                      onClick={handleInstall}
+                      disabled={installing}
+                      className="mt-2 w-full rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
+                    >
+                      {installing ? "Installing…" : "Install Chat Assist"}
+                    </button>
+                  ) : (
+                    <p className="mt-2 text-center text-xs text-gray-500">
+                      {isAndroid
+                        ? "Tap Chrome's ⋮ menu → “Add to Home screen” to install."
+                        : "Open this page in Chrome on your Android phone, then use ⋮ → “Add to Home screen”."}
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
             <button
               type="button"
               onClick={onClose}

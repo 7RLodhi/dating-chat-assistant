@@ -29,7 +29,11 @@ type EventName =
   | "outcome_prompt_shown"
   | "outcome_recorded"
   | "sample_match_created"
-  | "taste_learned";
+  | "taste_learned"
+  | "install_accepted"
+  | "install_dismissed"
+  | "install_unavailable"
+  | "app_installed";
 
 export function trackEvent(name: EventName, props: Record<string, unknown> = {}) {
   const key = process.env.NEXT_PUBLIC_POSTHOG_KEY;

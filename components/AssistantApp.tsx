@@ -45,6 +45,8 @@ import {
   readClipboardContent,
   useScreenshotUpload,
 } from "@/lib/useScreenshotUpload";
+import { usePwaInstall } from "@/lib/pwa";
+import { APP_VERSION } from "@/lib/version";
 import { FactsResponse, Goal, Language, MatchFacts, Mode, PendingOutcome, SuggestResponse, Tone } from "@/lib/types";
 
 export default function AssistantApp() {
@@ -77,6 +79,8 @@ export default function AssistantApp() {
 
   const [usageToday, setUsageToday] = useState(0);
   const [showPaywall, setShowPaywall] = useState(false);
+  const [resetHint, setResetHint] = useState<string | null>(null);
+  const { isAndroid, isInstalled, promptInstall } = usePwaInstall();
 
   const activeMatch = matches.find((m) => m.id === activeMatchId) ?? null;
   // No conversation yet -> opener mode (using their bio). Once there's an
@@ -376,7 +380,22 @@ export default function AssistantApp() {
     resetUsage();
     setUsageToday(0);
     setShowPaywall(false);
+    setResetHint(null);
     trackEvent("limit_reset");
+  }
+
+  // On Android the daily reset is an install reward: not installed →
+  // tapping reset fires the install prompt instead of resetting.
+  // Everywhere else (desktop, already installed) it just resets.
+  async function handleResetClick() {
+    if (isAndroid && !isInstalled) {
+      const outcome = await promptInstall();
+      if (outcome === "unavailable") {
+        setResetHint("To reset on Android, install the app: Chrome ⋮ → “Add to Home screen”.");
+      }
+      return;
+    }
+    handleResetLimit();
   }
 
   function handleClearChat() {
@@ -666,13 +685,26 @@ export default function AssistantApp() {
             {remaining === 0 && (
               <button
                 type="button"
-                onClick={handleResetLimit}
+                onClick={handleResetClick}
+                title={
+                  isAndroid && !isInstalled
+                    ? "Install the app to unlock your daily reset"
+                    : "Reset today's free limit"
+                }
                 className="rounded-full border border-gray-300 px-2 py-0.5 font-medium text-gray-500 hover:border-brand-400 hover:text-brand-600"
               >
-                Reset limit
+                {isAndroid && !isInstalled ? "📲 Reset limit" : "Reset limit"}
               </button>
             )}
           </div>
+          {resetHint && (
+            <p className="mt-1 text-center text-xs text-gray-500">{resetHint}</p>
+          )}
+          {remaining === 0 && isAndroid && !isInstalled && !resetHint && (
+            <p className="mt-1 text-center text-xs text-gray-400">
+              📲 Install the app to unlock your daily reset
+            </p>
+          )}
         </div>
       )}
 
@@ -721,6 +753,7 @@ export default function AssistantApp() {
         This is a validation prototype. Conversation text is sent to an AI provider to
         generate suggestions and is not stored beyond what's needed to do that. You always
         choose what to send — nothing is sent on your behalf.
+        <span className="mt-1 block">{APP_VERSION}</span>
       </footer>
 
       <PaywallModal open={showPaywall} onClose={() => setShowPaywall(false)} />
