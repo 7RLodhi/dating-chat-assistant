@@ -164,3 +164,7 @@ export interface VotePunRequestBody {
   id: string;
   vote: PunVote;
 }
+
+export interface RequestPunRequestBody {
+  name: string;
+}

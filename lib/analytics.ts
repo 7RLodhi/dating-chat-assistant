@@ -26,6 +26,7 @@ type EventName =
   | "pun_searched"
   | "pun_added"
   | "pun_voted"
+  | "pun_requested"
   | "outcome_prompt_shown"
   | "outcome_recorded"
   | "sample_match_created"

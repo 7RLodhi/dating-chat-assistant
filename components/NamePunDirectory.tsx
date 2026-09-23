@@ -5,6 +5,7 @@ import { trackEvent } from "@/lib/analytics";
 import { NamePun, PunVote } from "@/lib/types";
 
 const VOTED_KEY = "dca_pun_votes_v0";
+const REQUESTED_KEY = "dca_pun_requests_v0";
 
 function getVotedMap(): Record<string, PunVote> {
   if (typeof window === "undefined") return {};
@@ -35,12 +36,22 @@ export default function NamePunDirectory({ defaultQuery = "" }: { defaultQuery?:
   const [newPun, setNewPun] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [requestedNames, setRequestedNames] = useState<string[]>([]);
+  const [requesting, setRequesting] = useState(false);
+  const [requestError, setRequestError] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const punInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setVoted(getVotedMap());
+    try {
+      const raw = window.localStorage.getItem(REQUESTED_KEY);
+      const parsed = raw ? (JSON.parse(raw) as string[]) : [];
+      if (Array.isArray(parsed)) setRequestedNames(parsed);
+    } catch {
+      // ignore corrupt storage
+    }
   }, []);
 
   useEffect(() => {
@@ -124,6 +135,32 @@ export default function NamePunDirectory({ defaultQuery = "" }: { defaultQuery?:
     setTimeout(() => punInputRef.current?.focus(), 350);
   }
 
+  async function handleRequestPun() {
+    const name = query.trim();
+    if (!name || requesting) return;
+    const key = name.toLowerCase();
+    if (requestedNames.includes(key)) return;
+    setRequesting(true);
+    setRequestError(null);
+    try {
+      const res = await fetch("/api/puns/request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Couldn't record your request.");
+      const next = [...requestedNames, key];
+      setRequestedNames(next);
+      window.localStorage.setItem(REQUESTED_KEY, JSON.stringify(next));
+      trackEvent("pun_requested", { name });
+    } catch (err) {
+      setRequestError(err instanceof Error ? err.message : "Something went wrong.");
+    } finally {
+      setRequesting(false);
+    }
+  }
+
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
     if (!newName.trim() || !newPun.trim()) return;
@@ -162,9 +199,30 @@ export default function NamePunDirectory({ defaultQuery = "" }: { defaultQuery?:
       {loading && <p className="text-xs text-gray-400">Loading puns…</p>}
       {error && <p className="text-xs text-red-600">{error}</p>}
 
-      {!loading && !error && groups.length === 0 && (
+      {!loading && !error && groups.length === 0 && query.trim() && (
+        <div className="space-y-2 text-center">
+          <p className="text-xs text-gray-400">No puns for that name yet —</p>
+          {requestedNames.includes(query.trim().toLowerCase()) ? (
+            <p className="text-xs font-medium text-green-600">
+              Requested ✓ — we&apos;ll add one soon.
+            </p>
+          ) : (
+            <button
+              type="button"
+              onClick={handleRequestPun}
+              disabled={requesting}
+              className="rounded-full bg-brand-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-60"
+            >
+              {requesting ? "Requesting…" : `Request Pun for "${query.trim()}"`}
+            </button>
+          )}
+          {requestError && <p className="text-xs text-red-600">{requestError}</p>}
+        </div>
+      )}
+
+      {!loading && !error && groups.length === 0 && !query.trim() && (
         <p className="text-xs text-gray-400">
-          No puns for that name yet — add the first one below! 👇
+          No puns here yet — search a name above, or add the first one below! 👇
         </p>
       )}
 

@@ -315,6 +315,25 @@ export async function recordOutcome(record: OutcomeRecord): Promise<void> {
   });
 }
 
+export async function recordPunRequest(name: string): Promise<void> {
+  const trimmed = name.trim();
+  if (isSupabaseConfigured()) {
+    const supabase = getSupabase()!;
+    const { error } = await supabase.from("pun_requests").insert({ name: trimmed });
+    if (error) {
+      // eslint-disable-next-line no-console
+      console.error("Supabase insert (pun_requests) failed:", error.message);
+      throw new Error("Failed to record your request. Try again in a moment.");
+    }
+    return;
+  }
+
+  await appendJSONLine("pun_requests.jsonl", {
+    name: trimmed,
+    receivedAt: new Date().toISOString(),
+  });
+}
+
 export async function recordWaitlistEmail(
   email: string
 ): Promise<{ ok: boolean; alreadyExists?: boolean }> {

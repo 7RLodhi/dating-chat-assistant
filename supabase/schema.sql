@@ -77,11 +77,19 @@ create table if not exists name_puns (
 --   alter table generations add column if not exists via_screenshot boolean not null default false;
 --   alter table generations add column if not exists language text not null default 'auto';
 
+-- Requested-but-missing name puns: demand signal for which names to add next.
+create table if not exists pun_requests (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  name text not null
+);
+
 alter table generations enable row level security;
 alter table feedback enable row level security;
 alter table waitlist enable row level security;
 alter table name_puns enable row level security;
 alter table outcomes enable row level security;
+alter table pun_requests enable row level security;
 
 -- Helpful indexes for the analysis queries you'll actually run.
 create index if not exists idx_feedback_generation_id on feedback (generation_id);
