@@ -17,8 +17,7 @@ export default function ConversationComposer({
   onRowsChange: (rows: ConversationRow[]) => void;
   onClearChat: () => void;
 }) {
-  const [theirDraft, setTheirDraft] = useState("");
-  const [yourDraft, setYourDraft] = useState("");
+  const [draft, setDraft] = useState("");
   const [pastingSpeaker, setPastingSpeaker] = useState<"MATCH" | "USER" | null>(null);
   const [pasteError, setPasteError] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -54,22 +53,47 @@ export default function ConversationComposer({
     onRowsChange([...rows, { speaker, text: text.trim() }]);
   }
 
-  async function handlePasteClick(speaker: "MATCH" | "USER") {
+  async function readClipboardText(): Promise<string | null> {
     setPasteError(null);
-    setPastingSpeaker(speaker);
     try {
       const raw = await navigator.clipboard.readText();
       const cleaned = raw.replace(/\s+/g, " ").trim();
       if (!cleaned) {
         setPasteError("Clipboard is empty — copy a message first, then tap paste.");
-        return;
+        return null;
       }
-      addRow(speaker, cleaned);
-      trackEvent("clipboard_pasted", { speaker });
+      return cleaned;
     } catch {
       setPasteError(
         "Couldn't read the clipboard — allow paste access, copy the message again, and retry."
       );
+      return null;
+    }
+  }
+
+  // In-field paste icon: clipboard text goes into the field for review, then
+  // the user commits it with They said / You said.
+  async function handlePasteIntoField() {
+    const text = await readClipboardText();
+    if (text) setDraft(text);
+  }
+
+  // They said / You said with text in the field commits it as that speaker.
+  // With an empty field it falls back to pasting the clipboard straight in
+  // (the old quick-paste behavior).
+  async function handleSpeakerTap(speaker: "MATCH" | "USER") {
+    if (draft.trim()) {
+      addRow(speaker, draft);
+      setDraft("");
+      return;
+    }
+    setPastingSpeaker(speaker);
+    try {
+      const text = await readClipboardText();
+      if (text) {
+        addRow(speaker, text);
+        trackEvent("clipboard_pasted", { speaker });
+      }
     } finally {
       setPastingSpeaker(null);
     }
@@ -177,19 +201,41 @@ export default function ConversationComposer({
         </div>
       )}
 
-      <div className="w-3/4 space-y-1.5">
-        <ComposeField
-          value={theirDraft}
-          onChange={setTheirDraft}
-          onSubmit={(text) => {
-            addRow("MATCH", text);
-            setTheirDraft("");
-          }}
+      <div className="relative">
+        <input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          placeholder="Type or paste a message…"
+          className="w-full rounded-md border border-gray-300 py-2 pl-3 pr-11 text-sm placeholder:italic placeholder:text-gray-400 focus:border-brand-500 focus:outline-none"
         />
-        <div className="flex items-center justify-start gap-2">
+        {draft ? (
           <button
             type="button"
-            onClick={() => handlePasteClick("MATCH")}
+            onClick={() => setDraft("")}
+            aria-label="Clear message"
+            title="Clear message"
+            className="absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-sm text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+          >
+            ✕
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={handlePasteIntoField}
+            aria-label="Paste from clipboard"
+            title="Paste from clipboard"
+            className="absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-base hover:bg-gray-100"
+          >
+            📋
+          </button>
+        )}
+      </div>
+
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => handleSpeakerTap("MATCH")}
             disabled={pastingSpeaker !== null}
             className="rounded-full border border-gray-300 bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:border-gray-400 disabled:opacity-60"
           >
@@ -201,27 +247,14 @@ export default function ConversationComposer({
             </span>
           )}
         </div>
-      </div>
-
-      <div className="ml-auto w-3/4 space-y-1.5">
-        <ComposeField
-          value={yourDraft}
-          onChange={setYourDraft}
-          onSubmit={(text) => {
-            addRow("USER", text);
-            setYourDraft("");
-          }}
-        />
-        <div className="flex justify-end">
-          <button
-            type="button"
-            onClick={() => handlePasteClick("USER")}
-            disabled={pastingSpeaker !== null}
-            className="rounded-full bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-60"
-          >
-            {pastingSpeaker === "USER" ? "Pasting…" : "You said 📋"}
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() => handleSpeakerTap("USER")}
+          disabled={pastingSpeaker !== null}
+          className="rounded-full bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-60"
+        >
+          {pastingSpeaker === "USER" ? "Pasting…" : "You said 📋"}
+        </button>
       </div>
 
       {pasteError && <p className="text-xs text-red-600">{pasteError}</p>}
@@ -252,42 +285,4 @@ function RowEditor({ value, onChange }: { value: string; onChange: (v: string) =
   );
 }
 
-function ComposeField({
-  value,
-  onChange,
-  onSubmit,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  onSubmit: (v: string) => void;
-}) {
-  // Mobile keyboards show Tab instead of Enter on single-line inputs, so the
-  // explicit Add button is the primary submit path on phones (Enter keydown
-  // still works on desktop hardware keyboards).
-  return (
-    <div className="relative">
-      <input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            onSubmit(value);
-          }
-        }}
-        placeholder="Type a message and tap + to add…"
-        className="w-full rounded-md border border-gray-300 py-2 pl-3 pr-11 text-sm placeholder:italic placeholder:text-gray-400 focus:border-brand-500 focus:outline-none"
-      />
-      <button
-        type="button"
-        onClick={() => onSubmit(value)}
-        disabled={!value.trim()}
-        aria-label="Add to chat"
-        title="Add to chat"
-        className="absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-brand-600 text-lg font-medium leading-none text-white hover:bg-brand-700 disabled:opacity-40"
-      >
-        +
-      </button>
-    </div>
-  );
-}
+
