@@ -23,8 +23,8 @@ export default function ConversationComposer({
   const [inputFocused, setInputFocused] = useState(false);
   const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Hiding the keyboard bar is delayed so a tap on its buttons still lands:
-  // instant unmount on blur would remove the button before click fires.
+  // Unpinning on blur is delayed so a tap on the pinned buttons still
+  // lands: an instant revert would shift layout before click fires.
   useEffect(() => {
     return () => {
       if (blurTimer.current) clearTimeout(blurTimer.current);
@@ -221,96 +221,89 @@ export default function ConversationComposer({
         </div>
       )}
 
-      <div className="relative">
-        <input
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onFocus={handleInputFocus}
-          onBlur={handleInputBlur}
-          placeholder="Type or paste a message…"
-          className="w-full rounded-md border border-gray-300 py-2 pl-3 pr-11 text-sm placeholder:italic placeholder:text-gray-400 focus:border-brand-500 focus:outline-none"
-        />
-        {draft ? (
-          <button
-            type="button"
-            onClick={() => setDraft("")}
-            aria-label="Clear message"
-            title="Clear message"
-            className="absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-sm text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-          >
-            ✕
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={handlePasteIntoField}
-            aria-label="Paste from clipboard"
-            title="Paste from clipboard"
-            className="absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-base hover:bg-gray-100"
-          >
-            📋
-          </button>
-        )}
-      </div>
-
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => handleSpeakerTap("MATCH")}
-            disabled={pastingSpeaker !== null}
-            className="rounded-full border border-gray-300 bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:border-gray-400 disabled:opacity-60"
-          >
-            {pastingSpeaker === "MATCH" ? "Pasting…" : "📋 They said"}
-          </button>
-          {rows.length === 0 && pastingSpeaker === null && (
-            <span className="animate-bounce rounded-full bg-gray-900 px-2.5 py-1 text-[11px] font-medium text-white shadow">
-              👈 tap here to paste 👉
-            </span>
-          )}
-        </div>
-        <button
-          type="button"
-          onClick={() => handleSpeakerTap("USER")}
-          disabled={pastingSpeaker !== null}
-          className="rounded-full bg-blue-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-600 disabled:opacity-60"
+      {/* While the field is focused on mobile, this whole unit (field +
+          both pills) pins itself just above the keyboard; on blur it drops
+          back into place. Desktop is untouched via the md: resets.
+          onMouseDown keeps focus alive so taps land without layout jumps. */}
+      <div
+        className={
+          inputFocused
+            ? "fixed inset-x-0 bottom-0 z-40 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:static md:p-0"
+            : ""
+        }
+      >
+        <div
+          className={
+            inputFocused
+              ? "mx-auto max-w-2xl space-y-2 rounded-2xl border border-gray-200 bg-white/95 p-2 shadow-lg backdrop-blur md:mx-0 md:max-w-none md:space-y-3 md:rounded-none md:border-0 md:bg-transparent md:p-0 md:shadow-none md:backdrop-blur-none"
+              : "space-y-3"
+          }
         >
-          {pastingSpeaker === "USER" ? "Pasting…" : "You said 📋"}
-        </button>
-      </div>
+          <div className="relative">
+            <input
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onFocus={handleInputFocus}
+              onBlur={handleInputBlur}
+              placeholder="Type or paste a message…"
+              className="w-full rounded-md border border-gray-300 py-2 pl-3 pr-11 text-sm placeholder:italic placeholder:text-gray-400 focus:border-brand-500 focus:outline-none"
+            />
+            {draft ? (
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => setDraft("")}
+                aria-label="Clear message"
+                title="Clear message"
+                className="absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-sm text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+              >
+                ✕
+              </button>
+            ) : (
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={handlePasteIntoField}
+                aria-label="Paste from clipboard"
+                title="Paste from clipboard"
+                className="absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-base hover:bg-gray-100"
+              >
+                📋
+              </button>
+            )}
+          </div>
 
-      {pasteError && <p className="text-xs text-red-600">{pasteError}</p>}
-
-      {/* Mobile-only bar pinned just above the keyboard while typing, so
-          They / You stay tappable without dismissing it. onMouseDown keeps
-          focus (and the bar) alive until the tap's click fires. Desktop is
-          untouched (md:hidden). Requires the resizes-content viewport mode
-          to track the keyboard (Android Chrome); elsewhere it degrades to
-          the inline pills above. */}
-      {inputFocused && (
-        <div className="fixed inset-x-0 bottom-0 z-40 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:hidden">
-          <div className="mx-auto flex max-w-2xl items-center justify-between gap-2 rounded-2xl border border-gray-200 bg-white/95 p-2 shadow-lg backdrop-blur">
-            <button
-              type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => handleSpeakerTap("MATCH")}
-              disabled={pastingSpeaker !== null}
-              className="rounded-full border border-gray-300 bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 disabled:opacity-60"
-            >
-              {pastingSpeaker === "MATCH" ? "Pasting…" : "📋 They said"}
-            </button>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => handleSpeakerTap("MATCH")}
+                disabled={pastingSpeaker !== null}
+                className="rounded-full border border-gray-300 bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:border-gray-400 disabled:opacity-60"
+              >
+                {pastingSpeaker === "MATCH" ? "Pasting…" : "📋 They said"}
+              </button>
+              {rows.length === 0 && pastingSpeaker === null && (
+                <span className="animate-bounce rounded-full bg-gray-900 px-2.5 py-1 text-[11px] font-medium text-white shadow">
+                  👈 tap here to paste 👉
+                </span>
+              )}
+            </div>
             <button
               type="button"
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => handleSpeakerTap("USER")}
               disabled={pastingSpeaker !== null}
-              className="rounded-full bg-blue-500 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-60"
+              className="rounded-full bg-blue-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-600 disabled:opacity-60"
             >
               {pastingSpeaker === "USER" ? "Pasting…" : "You said 📋"}
             </button>
           </div>
         </div>
-      )}
+      </div>
+
+      {pasteError && <p className="text-xs text-red-600">{pasteError}</p>}
     </div>
   );
 }
