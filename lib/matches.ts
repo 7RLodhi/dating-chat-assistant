@@ -5,7 +5,7 @@
 // is now inferred from whether conversationText is empty, instead of a
 // manual mode toggle.
 
-import { MatchFacts } from "./types";
+import { MatchFacts, Tone } from "./types";
 
 export interface Match {
   id: string;
@@ -16,6 +16,8 @@ export interface Match {
   facts?: MatchFacts;
   /** First-run sample conversation — bannered in the UI, deletable like any match. */
   demo?: boolean;
+  /** Remembered tone chip selection (null/undefined = none selected). */
+  tone?: Tone | null;
 }
 
 const STORAGE_KEY = "dca_matches_v0";
@@ -50,7 +52,7 @@ export function addMatch(name: string, bio: string, demo = false): Match {
 
 export function updateMatch(
   id: string,
-  patch: Partial<Pick<Match, "name" | "bio" | "conversationText" | "facts" | "demo">>
+  patch: Partial<Pick<Match, "name" | "bio" | "conversationText" | "facts" | "demo" | "tone">>
 ): void {
   saveMatches(getMatches().map((m) => (m.id === id ? { ...m, ...patch } : m)));
 }

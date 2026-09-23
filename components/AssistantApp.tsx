@@ -67,7 +67,7 @@ export default function AssistantApp() {
   const [conversationRows, setConversationRows] = useState<ConversationRow[]>([]);
   const conversationText = serializeRows(conversationRows);
   const [extraContext, setExtraContext] = useState("");
-  const [tone, setTone] = useState<Tone>("witty");
+  const [tone, setTone] = useState<Tone | null>(null);
   const [goal, setGoal] = useState<Goal>("get_a_reply");
   const [language, setLanguage] = useState<Language>("auto");
   const [styleExamples, setStyleExamples] = useState("");
@@ -98,6 +98,7 @@ export default function AssistantApp() {
       setBio(mostRecent.bio);
       const loadedRows = parseConversationText(mostRecent.conversationText);
       setConversationRows(loadedRows);
+      setTone(mostRecent.tone ?? null);
       evaluateOutcomes(mostRecent.id, loadedRows.length);
     }
   }, []);
@@ -210,10 +211,12 @@ export default function AssistantApp() {
       return;
     }
 
+    // No chip selected means auto: match the conversation's own energy.
+    const requestTone = tone ?? "auto";
     setLoading(true);
     setError(null);
     setResult(null);
-    trackEvent("generate_requested", { mode: params.mode, tone, goal, language });
+    trackEvent("generate_requested", { mode: params.mode, tone: requestTone, goal, language });
 
     try {
       const res = await fetch("/api/suggest", {
@@ -225,7 +228,7 @@ export default function AssistantApp() {
           profileText: params.mode === "opener" ? params.profileText : undefined,
           matchName: params.mode === "opener" ? params.matchName : undefined,
           extraContext,
-          tone,
+          tone: requestTone,
           goal,
           language,
           styleExamples: styleExamples.trim() || undefined,
@@ -242,11 +245,11 @@ export default function AssistantApp() {
       setResult(data as SuggestResponse);
       const newCount = incrementUsage();
       setUsageToday(newCount);
-      trackEvent("generate_succeeded", { mode: params.mode, tone, goal, language });
+      trackEvent("generate_succeeded", { mode: params.mode, tone: requestTone, goal, language });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Something went wrong.";
       setError(message);
-      trackEvent("generate_failed", { mode: params.mode, tone, goal, language, message });
+      trackEvent("generate_failed", { mode: params.mode, tone: requestTone, goal, language, message });
     } finally {
       setLoading(false);
     }
@@ -307,7 +310,13 @@ export default function AssistantApp() {
     setResult(null);
     setError(null);
     setShowBioModal(false);
+    setTone(match.tone ?? null);
     evaluateOutcomes(match.id, selectedRows.length);
+  }
+
+  function handleToneChange(next: Tone) {
+    setTone(next);
+    if (activeMatchId) updateMatch(activeMatchId, { tone: next });
   }
 
   function handleCreateMatch(name: string, matchBio: string, generate: boolean) {
@@ -319,6 +328,7 @@ export default function AssistantApp() {
     setResult(null);
     setError(null);
     setShowBioModal(false);
+    setTone(null);
     setShowNewMatchModal(false);
     if (generate) {
       runGenerate({ mode: "opener", profileText: matchBio, matchName: name });
@@ -347,6 +357,7 @@ export default function AssistantApp() {
     setError(null);
     setShowBioModal(false);
     setShowEditModal(false);
+    setTone(next?.tone ?? null);
     trackEvent("match_deleted");
   }
 
@@ -463,6 +474,7 @@ export default function AssistantApp() {
     setResult(null);
     setError(null);
     setShowBioModal(false);
+    setTone(null);
     trackEvent("sample_match_created");
   }
 
@@ -625,7 +637,7 @@ export default function AssistantApp() {
             />
           </div>
 
-          <ToneSelector value={tone} onChange={setTone} />
+          <ToneSelector value={tone} onChange={handleToneChange} />
           <TasteHint refreshKey={tasteVersion} />
 
           <div className="rounded-lg border border-gray-200">

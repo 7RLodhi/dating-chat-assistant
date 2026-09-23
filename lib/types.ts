@@ -1,4 +1,4 @@
-export type Tone = "playful" | "sincere" | "witty" | "bold" | "spicy";
+export type Tone = "casual" | "playful" | "witty" | "sincere" | "flirty" | "spicy" | "auto";
 
 export type Goal = "get_a_reply" | "escalate_to_date" | "keep_it_light";
 

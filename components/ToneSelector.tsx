@@ -7,7 +7,7 @@ export default function ToneSelector({
   value,
   onChange,
 }: {
-  value: Tone;
+  value: Tone | null;
   onChange: (tone: Tone) => void;
 }) {
   return (

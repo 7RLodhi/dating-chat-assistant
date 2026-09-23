@@ -1,4 +1,9 @@
 import { trackEvent } from "./analytics";
+import { TONE_OPTIONS } from "./prompts";
+
+// Only affinity for currently offered tones steers suggestions — votes for
+// retired tones (e.g. bold) still count toward totals but never surface.
+const CURRENT_TONES: Set<string> = new Set(TONE_OPTIONS.map((o) => o.value));
 
 // Learns what a user likes from their own 👍/👎 votes — no accounts, no ML
 // infra, just localStorage tallies. Three signals, each with a minimum vote
@@ -78,6 +83,7 @@ export function summarizeTaste(votes: TasteVote[] = getTasteVotes()): TasteSumma
     byTone.set(v.tone, entry);
   }
   for (const [tone, { up, down }] of byTone) {
+    if (!CURRENT_TONES.has(tone)) continue;
     const total = up + down;
     if (total < MIN_TONE_VOTES) continue;
     const rate = up / total;
