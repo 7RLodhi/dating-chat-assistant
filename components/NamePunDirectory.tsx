@@ -55,17 +55,25 @@ export default function NamePunDirectory({ defaultQuery = "" }: { defaultQuery?:
   }, []);
 
   useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    // No query → no list. Results appear on search only (the directory opens
+    // prefilled with the active match's name, so that still shows instantly).
+    if (!query.trim()) {
+      setPuns([]);
+      setLoading(false);
+      setError(null);
+      return;
+    }
     setLoading(true);
     setError(null);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
       try {
-        const params = query.trim() ? `?search=${encodeURIComponent(query.trim())}` : "";
+        const params = `?search=${encodeURIComponent(query.trim())}`;
         const res = await fetch(`/api/puns${params}`);
         const data = await res.json();
         if (!res.ok) throw new Error(data?.error || "Couldn't load puns.");
         setPuns(data.puns as NamePun[]);
-        if (query.trim()) trackEvent("pun_searched", { query: query.trim() });
+        trackEvent("pun_searched", { query: query.trim() });
       } catch (err) {
         setError(err instanceof Error ? err.message : "Something went wrong.");
       } finally {
@@ -222,7 +230,7 @@ export default function NamePunDirectory({ defaultQuery = "" }: { defaultQuery?:
 
       {!loading && !error && groups.length === 0 && !query.trim() && (
         <p className="text-xs text-gray-400">
-          No puns here yet — search a name above, or add the first one below! 👇
+          Search a name above to browse puns — or add a new one below! 👇
         </p>
       )}
 
@@ -239,7 +247,7 @@ export default function NamePunDirectory({ defaultQuery = "" }: { defaultQuery?:
                 onClick={() => handleAddForName(group.displayName)}
                 className="shrink-0 text-xs font-medium text-brand-600 hover:text-brand-700"
               >
-                + Add Pun
+                {`+ Add New Pun for "${group.displayName}"`}
               </button>
             </div>
             <div className="mt-1.5 space-y-1.5">
