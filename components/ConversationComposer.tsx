@@ -20,6 +20,26 @@ export default function ConversationComposer({
   const [draft, setDraft] = useState("");
   const [pastingSpeaker, setPastingSpeaker] = useState<"MATCH" | "USER" | null>(null);
   const [pasteError, setPasteError] = useState<string | null>(null);
+  const [inputFocused, setInputFocused] = useState(false);
+  const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Hiding the keyboard bar is delayed so a tap on its buttons still lands:
+  // instant unmount on blur would remove the button before click fires.
+  useEffect(() => {
+    return () => {
+      if (blurTimer.current) clearTimeout(blurTimer.current);
+    };
+  }, []);
+
+  function handleInputFocus() {
+    if (blurTimer.current) clearTimeout(blurTimer.current);
+    setInputFocused(true);
+  }
+
+  function handleInputBlur() {
+    if (blurTimer.current) clearTimeout(blurTimer.current);
+    blurTimer.current = setTimeout(() => setInputFocused(false), 200);
+  }
   const listRef = useRef<HTMLDivElement>(null);
   const prevCountRef = useRef(rows.length);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
@@ -148,7 +168,7 @@ export default function ConversationComposer({
                       type="button"
                       onClick={() => toggleSpeaker(i)}
                       title="Tap to swap: mark as sent by them"
-                      className="shrink-0 rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-medium text-brand-700 hover:ring-1 hover:ring-brand-400"
+                      className="shrink-0 rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-medium text-blue-700 hover:ring-1 hover:ring-blue-400"
                     >
                       You
                     </button>
@@ -205,6 +225,8 @@ export default function ConversationComposer({
         <input
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
+          onFocus={handleInputFocus}
+          onBlur={handleInputBlur}
           placeholder="Type or paste a message…"
           className="w-full rounded-md border border-gray-300 py-2 pl-3 pr-11 text-sm placeholder:italic placeholder:text-gray-400 focus:border-brand-500 focus:outline-none"
         />
@@ -243,7 +265,7 @@ export default function ConversationComposer({
           </button>
           {rows.length === 0 && pastingSpeaker === null && (
             <span className="animate-bounce rounded-full bg-gray-900 px-2.5 py-1 text-[11px] font-medium text-white shadow">
-              👈 tap here to paste
+              👈 tap here to paste 👉
             </span>
           )}
         </div>
@@ -251,13 +273,44 @@ export default function ConversationComposer({
           type="button"
           onClick={() => handleSpeakerTap("USER")}
           disabled={pastingSpeaker !== null}
-          className="rounded-full bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-60"
+          className="rounded-full bg-blue-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-600 disabled:opacity-60"
         >
           {pastingSpeaker === "USER" ? "Pasting…" : "You said 📋"}
         </button>
       </div>
 
       {pasteError && <p className="text-xs text-red-600">{pasteError}</p>}
+
+      {/* Mobile-only bar pinned just above the keyboard while typing, so
+          They / You stay tappable without dismissing it. onMouseDown keeps
+          focus (and the bar) alive until the tap's click fires. Desktop is
+          untouched (md:hidden). Requires the resizes-content viewport mode
+          to track the keyboard (Android Chrome); elsewhere it degrades to
+          the inline pills above. */}
+      {inputFocused && (
+        <div className="fixed inset-x-0 bottom-0 z-40 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:hidden">
+          <div className="mx-auto flex max-w-2xl items-center justify-between gap-2 rounded-2xl border border-gray-200 bg-white/95 p-2 shadow-lg backdrop-blur">
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => handleSpeakerTap("MATCH")}
+              disabled={pastingSpeaker !== null}
+              className="rounded-full border border-gray-300 bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 disabled:opacity-60"
+            >
+              {pastingSpeaker === "MATCH" ? "Pasting…" : "📋 They said"}
+            </button>
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => handleSpeakerTap("USER")}
+              disabled={pastingSpeaker !== null}
+              className="rounded-full bg-blue-500 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-60"
+            >
+              {pastingSpeaker === "USER" ? "Pasting…" : "You said 📋"}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

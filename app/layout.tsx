@@ -27,6 +27,9 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
+  // Shrinks the layout viewport when the keyboard opens (Android Chrome),
+  // so fixed bottom bars sit just above the keyboard instead of behind it.
+  interactiveWidget: "resizes-content",
 };
 
 export default function RootLayout({

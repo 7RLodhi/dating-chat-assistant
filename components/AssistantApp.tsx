@@ -582,7 +582,7 @@ export default function AssistantApp() {
                 onClick={handlePasteScreenshotClick}
                 disabled={conversationUpload.uploading}
                 title="Pastes the screenshot currently in your clipboard"
-                className="rounded-full border border-gray-300 bg-white px-4 py-1.5 text-xs font-medium text-gray-700 hover:border-brand-400 hover:text-brand-600 disabled:opacity-60"
+                className="rounded-full border border-brand-400 bg-white px-4 py-1.5 text-xs font-medium text-brand-600 hover:border-brand-600 hover:bg-brand-50 disabled:opacity-60"
               >
                 📋 Paste Screenshot
               </button>
@@ -602,7 +602,7 @@ export default function AssistantApp() {
                 onClick={handleUploadChatScreenshotClick}
                 disabled={conversationUpload.uploading}
                 title="Pastes the screenshot from your clipboard if there is one, otherwise lets you pick a file"
-                className="rounded-full border border-gray-300 bg-white px-4 py-1.5 text-xs font-medium text-gray-700 hover:border-brand-400 hover:text-brand-600 disabled:opacity-60"
+                className="rounded-full bg-brand-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-60"
               >
                 {conversationUpload.uploading ? "Reading screenshot…" : "📷 Upload Chat Screenshot"}
               </button>
