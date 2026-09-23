@@ -9,12 +9,17 @@ import {
   SYSTEM_PROMPT,
   buildNamePunPrompt,
   buildOpenerUserPrompt,
+  buildRegisterCorrection,
   buildReplyUserPrompt,
+  detectHindiRegister,
+  violatesRegister,
 } from "@/lib/prompts";
 import { getTopPunForName, recordGeneration } from "@/lib/store";
 import { Goal, Language, SuggestRequestBody, SuggestResponse, Tone } from "@/lib/types";
 
 const VALID_TONES: Tone[] = ["casual", "playful", "witty", "sincere", "flirty", "spicy", "auto"];
+// Labels a suggestion may carry (auto is a request mode, never a label).
+const DISPLAY_TONES = ["casual", "playful", "witty", "sincere", "flirty", "spicy"] as const;
 const VALID_GOALS: Goal[] = ["get_a_reply", "escalate_to_date", "keep_it_light"];
 const VALID_LANGUAGES: Language[] = ["auto", "english", "hindi", "hinglish"];
 const MAX_INPUT_CHARS = 4000;
@@ -112,11 +117,42 @@ export async function POST(req: NextRequest) {
       : buildOpenerUserPrompt({ profileText: textField, tone, goal, styleExamples, language, namePunHint, tasteProfile });
 
   try {
-    const result = await callLLMForJSON<SuggestResponse>({
+    const schema = mode === "reply" ? REPLY_JSON_SCHEMA : OPENER_JSON_SCHEMA;
+    let result = await callLLMForJSON<SuggestResponse>({
       systemPrompt: SYSTEM_PROMPT,
       userPrompt,
-      schema: mode === "reply" ? REPLY_JSON_SCHEMA : OPENER_JSON_SCHEMA,
+      schema,
     });
+
+    // Hard guard for Hindi/Hinglish pronoun register (a prompt rule alone
+    // still slipped ~1 in 8 suggestions): drop suggestions that use the
+    // wrong register; if fewer than 3 survive, retry once with an explicit
+    // correction and keep the better of the two attempts.
+    const register = mode === "reply" && language !== "english" ? detectHindiRegister(textField) : null;
+    if (register && Array.isArray(result.suggestions)) {
+      const keep = (r: SuggestResponse) =>
+        (r.suggestions ?? []).filter((s) => !violatesRegister(s.text, register));
+      let kept = keep(result);
+      if (kept.length < 3) {
+        try {
+          const retry = await callLLMForJSON<SuggestResponse>({
+            systemPrompt: SYSTEM_PROMPT,
+            userPrompt: userPrompt + buildRegisterCorrection(register),
+            schema,
+          });
+          const retryKept = keep(retry);
+          if (retryKept.length > kept.length) {
+            result = retry;
+            kept = retryKept;
+          }
+        } catch (err) {
+          // eslint-disable-next-line no-console
+          console.error("register retry failed, keeping first attempt:", err);
+        }
+      }
+      // Never return an empty list over a pronoun slip.
+      if (kept.length > 0) result = { ...result, suggestions: kept };
+    }
 
     if (!Array.isArray(result.suggestions) || result.suggestions.length === 0) {
       return NextResponse.json(
@@ -124,6 +160,18 @@ export async function POST(req: NextRequest) {
         { status: 502 }
       );
     }
+
+    // The model occasionally invents tone labels (e.g. "thoughtful"). Those
+    // would render as bogus chips and pollute per-tone vote learning, so
+    // snap anything unrecognized to the requested tone (casual for auto).
+    const fallbackTone = tone === "auto" ? "casual" : tone;
+    result.suggestions = result.suggestions.map((s) => ({
+      ...s,
+      tone:
+        typeof s.tone === "string" && (DISPLAY_TONES as readonly string[]).includes(s.tone.toLowerCase())
+          ? s.tone.toLowerCase()
+          : fallbackTone,
+    }));
 
     const id = randomUUID();
 

@@ -136,10 +136,39 @@ export default function AssistantApp() {
 
   // Shared by the global Ctrl+V-anywhere listener and the Upload Chat
   // Screenshot button — both append whatever OCR finds onto the current rows.
+  // OCR takes seconds, so the callback reads live refs rather than the
+  // render-time closure: rows added meanwhile aren't overwritten, and if the
+  // user switched matches mid-transcription the result goes to the match it
+  // was started from (saved to storage) instead of landing on the wrong screen.
+  const latestRowsRef = useRef(conversationRows);
+  latestRowsRef.current = conversationRows;
+  const latestMatchIdRef = useRef(activeMatchId);
+  latestMatchIdRef.current = activeMatchId;
+  const uploadMatchIdRef = useRef<string | null>(null);
+
   const conversationUpload = useScreenshotUpload((text) => {
     const parsed = parseConversationText(text);
-    persistRows(parsed.length > 0 ? [...conversationRows, ...parsed] : conversationRows, true);
+    if (parsed.length === 0) return;
+    const originId = uploadMatchIdRef.current;
+    if (originId && originId !== latestMatchIdRef.current) {
+      const origin = getMatches().find((m) => m.id === originId);
+      if (origin) {
+        const merged = [...parseConversationText(origin.conversationText), ...parsed];
+        const serialized = serializeRows(merged);
+        updateMatch(originId, { conversationText: serialized });
+        setMatches((prev) =>
+          prev.map((m) => (m.id === originId ? { ...m, conversationText: serialized } : m))
+        );
+      }
+      return;
+    }
+    persistRows([...latestRowsRef.current, ...parsed], true);
   }, "conversation");
+
+  function startConversationUpload(file: File, source: "upload" | "paste") {
+    uploadMatchIdRef.current = latestMatchIdRef.current;
+    conversationUpload.processFile(file, source);
+  }
 
 
 
@@ -151,8 +180,8 @@ export default function AssistantApp() {
   activeMatchIdRef.current = activeMatchId;
   const showNewMatchModalRef = useRef(showNewMatchModal);
   showNewMatchModalRef.current = showNewMatchModal;
-  const conversationUploadRef = useRef(conversationUpload);
-  conversationUploadRef.current = conversationUpload;
+  const startUploadRef = useRef(startConversationUpload);
+  startUploadRef.current = startConversationUpload;
   const chatScreenshotInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -162,7 +191,7 @@ export default function AssistantApp() {
       const file = extractImageFromClipboard(e.clipboardData);
       if (!file) return; // no image in clipboard — let normal text paste happen
       e.preventDefault();
-      conversationUploadRef.current.processFile(file, "paste");
+      startUploadRef.current(file, "paste");
     }
     window.addEventListener("paste", handlePaste);
     return () => window.removeEventListener("paste", handlePaste);
@@ -174,7 +203,7 @@ export default function AssistantApp() {
   async function handleUploadChatScreenshotClick() {
     const clipboardContent = await readClipboardContent();
     if (clipboardContent?.type === "image") {
-      conversationUpload.processFile(clipboardContent.file, "paste");
+      startConversationUpload(clipboardContent.file, "paste");
       return;
     }
     chatScreenshotInputRef.current?.click();
@@ -186,14 +215,17 @@ export default function AssistantApp() {
     setPasteScreenshotError(null);
     const clipboardContent = await readClipboardContent();
     if (clipboardContent?.type === "image") {
-      conversationUpload.processFile(clipboardContent.file, "paste");
+      startConversationUpload(clipboardContent.file, "paste");
       return;
     }
     setPasteScreenshotError("No screenshot in the clipboard — copy one first, then tap again.");
   }
 
   const dailyLimit = getDailyLimit();
-  const inputText = effectiveMode === "reply" ? conversationText : bio;
+  // Openers can work from the name alone when no bio was given, so the
+  // button stays usable for name-only matches instead of silently disabling.
+  const inputText =
+    effectiveMode === "reply" ? conversationText : bio || activeMatch?.name || "";
   const canSubmit = Boolean(activeMatch) && inputText.trim().length > 0 && !loading;
 
   async function runGenerate(params: {
@@ -202,6 +234,14 @@ export default function AssistantApp() {
     profileText?: string;
     matchName?: string;
   }) {
+    // Name-only openers: the API needs non-empty profile text, and the
+    // opener prompt already handles sparse profiles gracefully.
+    if (params.mode === "opener" && !params.profileText?.trim() && params.matchName?.trim()) {
+      params = {
+        ...params,
+        profileText: `(No bio provided — the only thing known is their name: ${params.matchName.trim()})`,
+      };
+    }
     const text = params.mode === "reply" ? params.conversationText : params.profileText;
     if (!text || !text.trim()) return;
 
@@ -314,7 +354,7 @@ export default function AssistantApp() {
     evaluateOutcomes(match.id, selectedRows.length);
   }
 
-  function handleToneChange(next: Tone) {
+  function handleToneChange(next: Tone | null) {
     setTone(next);
     if (activeMatchId) updateMatch(activeMatchId, { tone: next });
   }
@@ -606,7 +646,7 @@ export default function AssistantApp() {
                 onChange={(e) => {
                   const file = e.target.files?.[0];
                   e.target.value = "";
-                  if (file) conversationUpload.processFile(file, "upload");
+                  if (file) startConversationUpload(file, "upload");
                 }}
               />
               <button

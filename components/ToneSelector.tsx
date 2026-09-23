@@ -8,7 +8,7 @@ export default function ToneSelector({
   onChange,
 }: {
   value: Tone | null;
-  onChange: (tone: Tone) => void;
+  onChange: (tone: Tone | null) => void;
 }) {
   return (
     <div>
@@ -20,7 +20,10 @@ export default function ToneSelector({
           <button
             key={opt.value}
             type="button"
-            onClick={() => onChange(opt.value)}
+            // Tapping the active chip deselects it (back to auto: match the
+            // conversation's own energy).
+            onClick={() => onChange(value === opt.value ? null : opt.value)}
+            aria-pressed={value === opt.value}
             className={`rounded-full border px-3 py-1.5 text-sm transition ${
               value === opt.value
                 ? "border-brand-600 bg-brand-600 text-white"

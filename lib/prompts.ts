@@ -47,6 +47,88 @@ export const LANGUAGE_DESCRIPTIONS: Record<Language, string> = {
     "Reply in Hinglish: casual, code-mixed Hindi-English written in Roman/Latin script, the way most young urban Indians actually text on dating apps (e.g. \"arre yaar that's so cute\", \"kya kar rahe ho abhi\").",
 };
 
+// Hindi/Hinglish second-person register. Detected from the match's own lines
+// (falling back to the whole chat) so replies mirror how formal/intimate
+// they're being — a general system-prompt rule alone proved unreliable.
+type HindiRegister = "aap" | "tum" | "tu";
+
+const REGISTER_PATTERNS: Record<HindiRegister, RegExp> = {
+  aap: /\b(aap|aapka|aapki|aapke|aapko|aapse|aapne)\b/gi,
+  tum: /\b(tum|tumhe|tumhein|tumhara|tumhari|tumhare|tumko|tumse|tumne)\b/gi,
+  // "tune" deliberately omitted: it collides with the English word.
+  tu: /\b(tu|tera|teri|tere|tujhe|tujhse|tereko)\b/gi,
+};
+
+// Register is only injected when the chat actually contains Hindi, so a
+// stray token in an English conversation never nudges replies into Hindi.
+const HINDI_SIGNAL = /\b(hai|hain|hoon|kya|nahi|nahin|yaar|accha|acha|kaise|kaisi|mujhe|mera|meri|bohot|bahut|kuch|abhi)\b/i;
+
+const REGISTER_FORMS: Record<HindiRegister, { use: string; avoid: string }> = {
+  aap: {
+    use: "aap, aapka, aapki, aapko, aapse",
+    avoid: "tum/tumhara and tu/tera/teri/tujhe forms",
+  },
+  tum: {
+    use: "tum, tumhara, tumhari, tumhare, tumhe, tumse",
+    avoid: "tu/tera/teri/tere/tujhe forms (too intimate) and aap forms (too formal)",
+  },
+  tu: {
+    use: "tu, tera, teri, tere, tujhe, tujhse",
+    avoid: "aap forms (would feel cold)",
+  },
+};
+
+function countRegister(text: string, register: HindiRegister): number {
+  return (text.match(REGISTER_PATTERNS[register]) ?? []).length;
+}
+
+export function detectHindiRegister(conversationText: string): HindiRegister | null {
+  if (!HINDI_SIGNAL.test(conversationText)) return null;
+  const matchLines = conversationText
+    .split("\n")
+    .filter((l) => /^\[MATCH\]/i.test(l.trim()))
+    .join("\n");
+  for (const source of [matchLines, conversationText]) {
+    const counts = (["aap", "tum", "tu"] as HindiRegister[]).map((r) => ({
+      r,
+      n: countRegister(source, r),
+    }));
+    // Most-used wins; ties resolve toward the more formal register.
+    const best = counts.reduce((a, b) => (b.n > a.n ? b : a));
+    if (best.n > 0) return best.r;
+  }
+  return null;
+}
+
+// Forms that are jarring for a given register (includes the common "tuje"
+// misspelling). Used server-side to drop suggestions the model got wrong.
+const FORBIDDEN_FORMS: Record<HindiRegister, RegExp | null> = {
+  aap: /\b(tu|tera|teri|tere|tujhe|tuje|tujhse|tereko|tum|tumhe|tumhara|tumhari|tumhare|tumko|tumse)\b/i,
+  tum: /\b(tu|tera|teri|tere|tujhe|tuje|tujhse|tereko)\b/i,
+  tu: null,
+};
+
+export function violatesRegister(text: string, register: HindiRegister | null): boolean {
+  if (!register) return false;
+  const forbidden = FORBIDDEN_FORMS[register];
+  return forbidden ? forbidden.test(text) : false;
+}
+
+export function buildRegisterCorrection(register: HindiRegister): string {
+  const { use, avoid } = REGISTER_FORMS[register];
+  return `\n\nCORRECTION: your previous attempt used the wrong Hindi pronoun register. Every suggestion must use ONLY ${register}-forms (${use}). Using ${avoid} is not allowed.`;
+}
+
+function buildRegisterSection(conversationText: string, language: Language): string {
+  if (language === "english") return "";
+  const register = detectHindiRegister(conversationText);
+  if (!register) return "";
+  const { use, avoid } = REGISTER_FORMS[register];
+  return `
+HINDI PRONOUN REGISTER: the match addresses the user with "${register}". Any Hindi/Hinglish in your suggestions MUST use ${register}-forms (${use}) and must NOT use ${avoid}. Spell them correctly (e.g. "tujhe", not "tuje"; "mujhe", not "muje").
+`;
+}
+
 export const LANGUAGE_OPTIONS: { value: Language; label: string }[] = [
   { value: "auto", label: "Auto-detect" },
   { value: "english", label: "English" },
@@ -69,6 +151,15 @@ Rules:
 - If a "USER'S WRITING STYLE" reference is provided, match that voice — capitalization habits (e.g. all lowercase), punctuation (or lack of it), typical message length, emoji/slang habits, and recurring phrasing quirks — while still following the selected tone and goal for content and angle. The style reference governs *how* they write; tone/goal govern *what* they say.
 - If a "LEARNED TASTE" section is provided, it summarizes what this user demonstrably likes based on their own past votes: prefer the liked patterns and avoid the disliked ones, while the selected tone/goal still set the overall direction.
 - Follow the LANGUAGE instruction for which language/script to write the suggestions in. Write naturally and idiomatically in that language — never a stiff, word-for-word translation of an English sentence. For Hinglish specifically, code-mix the way real speakers do (mixing Hindi and English words/grammar in one sentence), not just English with a few Hindi words sprinkled in, and not full Hindi either.
+- Hindi/Hinglish pronoun register: mirror exactly the register the match uses — "aap" (formal), "tum" (friendly), or "tu" (very intimate). If they write "tum", reply with tum/tumhara/tumhe, never tu/tera/teri. Default to "tum" if unclear. Use correct grammar and standard Roman spellings (mujhe, kya, hai, nahi, bohot/bahut) — no broken constructions like "dekha hoon".
+- The "tone" field of each suggestion must be exactly one of: casual, playful, witty, sincere, flirty, spicy — pick the closest fit. Never invent other labels.
+
+INDIAN CONTEXT (users and matches are primarily in India, on apps like Hinge, Bumble, Tinder, Aisle, TrulyMadly):
+- Be culturally fluent, not stereotyped. When the conversation touches them, reference things the way an urban Indian in their 20s would: chai vs coffee, Maggi, momos, biryani debates, street food, cricket, Bollywood/OTT shows, festivals, monsoon, city traffic, office life, weekend treks. Never force a cultural reference that isn't prompted by the conversation or profile.
+- First-date suggestions default to a café, chai/coffee, a walk, or a food spot. Don't suggest drinks, bars, or clubs unless the match has mentioned drinking or nightlife themselves.
+- Use Indian conventions: ₹ for money, km for distance, Indian city/neighbourhood names as the user gives them.
+- Never joke about or make assumptions based on religion, caste, skin colour, regional/linguistic stereotypes, or family. Families come up often in Indian dating — treat mentions of parents warmly and respectfully, never mockingly.
+- Casual Indian-English markers ("yaar", "arre", "scene kya hai") are fine only when the conversation's existing style already uses them.
 - Output must be valid JSON matching the provided schema. No text outside the JSON.`;
 
 export function buildReplyUserPrompt(params: {
@@ -91,6 +182,7 @@ ${conversationText}
 DESIRED TONE: ${tone} — ${TONE_DESCRIPTIONS[tone]}
 GOAL: ${goal} — ${GOAL_DESCRIPTIONS[goal]}
 LANGUAGE: ${language} — ${LANGUAGE_DESCRIPTIONS[language]}
+${buildRegisterSection(conversationText, language)}
 ${buildStyleSection(styleExamples)}
 ${buildTasteSection(tasteProfile)}
 Additional context from user (optional, may be empty): "${extraContext ?? ""}"
