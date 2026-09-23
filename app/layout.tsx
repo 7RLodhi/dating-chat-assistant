@@ -8,7 +8,6 @@ export const metadata: Metadata = {
     "Paste a conversation, pick a tone and goal, get message suggestions. Validation prototype.",
   applicationName: "Chat Assist",
   manifest: "/manifest.webmanifest",
-  themeColor: "#db2777",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
