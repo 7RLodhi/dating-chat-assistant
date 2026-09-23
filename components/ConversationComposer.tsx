@@ -261,18 +261,33 @@ function ComposeField({
   onChange: (v: string) => void;
   onSubmit: (v: string) => void;
 }) {
+  // Mobile keyboards show Tab instead of Enter on single-line inputs, so the
+  // explicit Add button is the primary submit path on phones (Enter keydown
+  // still works on desktop hardware keyboards).
   return (
-    <input
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          onSubmit(value);
-        }
-      }}
-      placeholder="Type a message and press Enter…"
-      className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm placeholder:italic placeholder:text-gray-400 focus:border-brand-500 focus:outline-none"
-    />
+    <div className="relative">
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            onSubmit(value);
+          }
+        }}
+        placeholder="Type a message and tap + to add…"
+        className="w-full rounded-md border border-gray-300 py-2 pl-3 pr-11 text-sm placeholder:italic placeholder:text-gray-400 focus:border-brand-500 focus:outline-none"
+      />
+      <button
+        type="button"
+        onClick={() => onSubmit(value)}
+        disabled={!value.trim()}
+        aria-label="Add to chat"
+        title="Add to chat"
+        className="absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-brand-600 text-lg font-medium leading-none text-white hover:bg-brand-700 disabled:opacity-40"
+      >
+        +
+      </button>
+    </div>
   );
 }
