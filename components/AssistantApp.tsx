@@ -15,6 +15,9 @@ import BioModal from "./BioModal";
 import EditMatchModal from "./EditMatchModal";
 import MatchFactsModal from "./MatchFactsModal";
 import NamePunDirectory from "./NamePunDirectory";
+import SideMenu, { SideMenuItem } from "./SideMenu";
+import DoubleMeaningSheet from "./DoubleMeaningSheet";
+import DarkFantasySheet from "./DarkFantasySheet";
 import { trackEvent } from "@/lib/analytics";
 import OutcomeNudge from "./OutcomeNudge";
 import TasteHint from "./TasteHint";
@@ -30,7 +33,7 @@ import {
   SAMPLE_MATCH_CONVERSATION,
   SAMPLE_MATCH_NAME,
 } from "@/lib/sampleMatch";
-import { getDisplayAge } from "@/lib/ageUtils";
+import { getDisplayAge, minorBlockReason } from "@/lib/ageUtils";
 import { ConversationRow, parseConversationText, serializeRows } from "@/lib/conversationRows";
 import { Match, addMatch, deleteMatch, getMatches, updateMatch } from "@/lib/matches";
 import {
@@ -79,6 +82,8 @@ export default function AssistantApp() {
 
   const [usageToday, setUsageToday] = useState(0);
   const [showPaywall, setShowPaywall] = useState(false);
+  const [showSideMenu, setShowSideMenu] = useState(false);
+  const [openDeck, setOpenDeck] = useState<SideMenuItem | null>(null);
   const [resetHint, setResetHint] = useState<string | null>(null);
   const { isAndroid, isInstalled, promptInstall } = usePwaInstall();
 
@@ -522,7 +527,20 @@ export default function AssistantApp() {
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-10">
-      <header className="mb-6 text-center">
+      <header className="relative mb-6 text-center">
+        <button
+          type="button"
+          onClick={() => {
+            setShowSideMenu(true);
+            trackEvent("side_menu_opened");
+          }}
+          aria-label="Open menu"
+          className="absolute left-0 top-0.5 flex h-9 w-9 items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5">
+            <path strokeLinecap="round" d="M4 7h16M4 12h16M4 17h16" />
+          </svg>
+        </button>
         <h1 className="text-2xl font-bold text-gray-900">Chat Assist</h1>
         <p className="mt-1 text-sm text-gray-500">
           Pick a match, get suggestions to send yourself. Nothing is sent automatically.
@@ -789,6 +807,21 @@ export default function AssistantApp() {
       </footer>
 
       <PaywallModal open={showPaywall} onClose={() => setShowPaywall(false)} />
+      <SideMenu
+        open={showSideMenu}
+        onClose={() => setShowSideMenu(false)}
+        onSelect={(item) => {
+          setShowSideMenu(false);
+          setOpenDeck(item);
+          trackEvent("fun_deck_opened", { deck: item });
+        }}
+      />
+      <DoubleMeaningSheet open={openDeck === "doubleMeaning"} onClose={() => setOpenDeck(null)} />
+      <DarkFantasySheet
+        open={openDeck === "darkFantasy"}
+        onClose={() => setOpenDeck(null)}
+        blockedReason={minorBlockReason(activeMatch?.facts)}
+      />
       <NewMatchModal
         open={showNewMatchModal}
         onClose={() => setShowNewMatchModal(false)}

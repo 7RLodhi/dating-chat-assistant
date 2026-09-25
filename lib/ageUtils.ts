@@ -29,6 +29,22 @@ export function getDisplayAge(facts?: MatchFacts | null): number | null {
   return null;
 }
 
+/**
+ * Returns a human-readable reason if the match appears to be under 18
+ * (known age < 18, or currently in school), else null. Used to withhold
+ * adult content for that match.
+ */
+export function minorBlockReason(facts?: MatchFacts | null): string | null {
+  const age = getDisplayAge(facts);
+  if (age !== null && age < 18) {
+    return `Their summary shows they're ${age}. Adult content is only for matches who are 18+.`;
+  }
+  if (facts?.occupationType === "student" && facts.educationLevel === "school") {
+    return "Their summary shows they're still in school. Adult content is only for matches who are 18+.";
+  }
+  return null;
+}
+
 export function formatDob(dob: string): string {
   if (!dob) return "";
   const parsed = new Date(dob);

@@ -34,7 +34,11 @@ type EventName =
   | "install_accepted"
   | "install_dismissed"
   | "install_unavailable"
-  | "app_installed";
+  | "app_installed"
+  | "side_menu_opened"
+  | "fun_deck_opened"
+  | "fun_item_copied"
+  | "adult_content_confirmed";
 
 export function trackEvent(name: EventName, props: Record<string, unknown> = {}) {
   const key = process.env.NEXT_PUBLIC_POSTHOG_KEY;
