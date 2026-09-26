@@ -4,6 +4,8 @@ import {
   FANTASY_JSON_SCHEMA,
   FANTASY_SYSTEM_PROMPT,
   buildFantasyPrompt,
+  buildFantasyReligionCorrection,
+  containsReligiousContent,
 } from "@/lib/prompts";
 import { FantasyRequestBody, FantasyResponse } from "@/lib/types";
 
@@ -43,17 +45,43 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Clean up: drop empties, dedupe (case-insensitive), and drop anything
-    // echoing the avoid list — belt and suspenders around the prompt rule.
-    const seen = new Set(avoid.map((a) => a.trim().toLowerCase()));
-    const items: string[] = [];
-    for (const raw of result.items) {
-      if (typeof raw !== "string") continue;
-      const text = raw.trim();
-      const key = text.toLowerCase();
-      if (!text || seen.has(key)) continue;
-      seen.add(key);
-      items.push(text);
+    // Clean up: drop empties, dedupe (case-insensitive), drop anything
+    // echoing the avoid list, and drop anything with religious content
+    // (hard rule — enforced here even if the prompt instruction is ignored).
+    const clean = (rawItems: unknown[]): string[] => {
+      const seen = new Set(avoid.map((a) => a.trim().toLowerCase()));
+      const out: string[] = [];
+      for (const raw of rawItems) {
+        if (typeof raw !== "string") continue;
+        const text = raw.trim();
+        const key = text.toLowerCase();
+        if (!text || seen.has(key) || containsReligiousContent(text)) continue;
+        seen.add(key);
+        out.push(text);
+      }
+      return out;
+    };
+
+    let items = clean(result.items);
+
+    // If religion filtering gutted the batch, retry once with an explicit
+    // correction and keep whichever attempt yields more usable items.
+    if (items.length < Math.min(count, 3)) {
+      try {
+        const retry = await callLLMForJSON<FantasyResponse>({
+          systemPrompt: FANTASY_SYSTEM_PROMPT,
+          userPrompt:
+            buildFantasyPrompt({ language, count, avoid }) + buildFantasyReligionCorrection(),
+          schema: FANTASY_JSON_SCHEMA,
+          temperature: 0.9,
+          maxTokens: 500,
+        });
+        const retryItems = Array.isArray(retry.items) ? clean(retry.items) : [];
+        if (retryItems.length > items.length) items = retryItems;
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error("fantasy religion retry failed, keeping first attempt:", err);
+      }
     }
 
     if (items.length === 0) {

@@ -463,6 +463,7 @@ export const FANTASY_SYSTEM_PROMPT = `You write short romantic-fantasy scenario 
 
 Hard rules:
 - Be bold and uninhibited in tone — direct sensual language is welcome. But never pornographic: no sexual acts described in detail, no crude anatomical language.
+- No religious content whatsoever: no temples, mosques, churches, gurudwaras or other places of worship, no idols, deities, or religious figures, and no religious ceremonies or festivals as settings. Places of worship are completely off-limits.
 - No coercion, no non-consent themes, nothing involving minors, no incapacitation scenarios.
 - Under 15 words per item. Vary the settings: mix indoor/outdoor, day/night, weather, city spots, travel moments.
 - Do not repeat any item from the AVOID list — rephrase into new settings instead of near-duplicates.
@@ -485,6 +486,27 @@ Return JSON matching this schema:
 {
   "items": ["string", "... short scenario phrases, each under 15 words"]
 }`;
+}
+
+// Server-side backstop for the no-religion rule: catches Roman and
+// Devanagari terms for worship sites, idols/deities, and rites. Used to
+// filter model output (see /api/fantasy) even when the prompt is ignored.
+//
+// Boundaries are Unicode-aware lookarounds, not \b: \b is ASCII-only, so it
+// never matches around Devanagari text, and it would let names like
+// "Devika" match "devi". Deliberately excluded: bare "god"/"goddess"
+// (overwhelmingly "oh my god" exclamations and compliments, not worship),
+// "mandap" (a wedding canopy, not a worship site), and bare "math"
+// (collides with the English word).
+const RELIGIOUS_CONTENT_PATTERN =
+  /(?<![\p{L}\p{N}_])(mandir|masjid|masjit|girja|church|gurudwara|gurudware|temple|murti|moorti|vigraha|devi|devta|bhagwan|bhagwaan|allah|waheguru|jesus|pooja|puja|aarti|namaz|prarthana|prarthna|kirtan|bhajan|shrine|monastery|dargah|tirupati|vaishno|kashi|mecca|madina|vatican|मंदिर|मस्जिद|चर्च|गिरजा|गुरुद्वारा|मूर्ति|देवी|देवता|भगवान|अल्लाह|पूजा|आरती|नमाज़|नमाज|प्रार्थना|कीर्तन|भजन|दरगाह)(?![\p{L}\p{N}_])/iu;
+
+export function containsReligiousContent(text: string): boolean {
+  return RELIGIOUS_CONTENT_PATTERN.test(text);
+}
+
+export function buildFantasyReligionCorrection(): string {
+  return `\n\nCORRECTION: your previous attempt included religious content (a temple, idol, deity, or other place/figure of worship), which is strictly forbidden and must never appear. Regenerate all items with zero religious references — secular settings only.`;
 }
 
 export const FANTASY_JSON_SCHEMA = {
