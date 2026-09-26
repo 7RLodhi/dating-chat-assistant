@@ -90,6 +90,39 @@ open class ChatParser(val appPackage: String) {
         return bounds.width().coerceAtLeast(1)
     }
 
+    /**
+     * Best-effort chat title: the topmost short, non-chrome text in the top
+     * 15% of the screen (usually the contact's display name in the app bar).
+     * Null when nothing qualifies — callers must fall back to the package
+     * key rather than guessing. Typing/presence lines are already chrome, so
+     * a "typing…" header never becomes a title.
+     */
+    open fun extractTitle(root: AccessibilityNodeInfo?): String? {
+        if (root == null) return null
+        val screen = Rect()
+        root.getBoundsInScreen(screen)
+        if (screen.height() <= 0) return null
+        val cutoff = (screen.height() * 0.15).toInt()
+        var best: String? = null
+        var bestTop = Int.MAX_VALUE
+        fun walk(node: AccessibilityNodeInfo) {
+            val text = node.text?.toString()?.trim().orEmpty()
+            if (text.isNotEmpty() && node.childCount == 0 && text.length <= 60 && !isChrome(text)) {
+                val bounds = Rect()
+                node.getBoundsInScreen(bounds)
+                if (bounds.top in 0..cutoff && bounds.top < bestTop) {
+                    bestTop = bounds.top
+                    best = text
+                }
+            }
+            for (i in 0 until node.childCount) {
+                node.getChild(i)?.let { walk(it) }
+            }
+        }
+        walk(root)
+        return best
+    }
+
     companion object {
         fun forPackage(appPackage: String): ChatParser = when (appPackage) {
             "com.tinder" -> TinderParser()

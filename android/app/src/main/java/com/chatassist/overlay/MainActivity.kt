@@ -39,6 +39,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var sizeValue: TextView
     private lateinit var alphaSeek: SeekBar
     private lateinit var alphaValue: TextView
+    private lateinit var panelAlphaSeek: SeekBar
+    private lateinit var panelAlphaValue: TextView
 
     private val pickImage = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri == null) return@registerForActivityResult
@@ -67,6 +69,8 @@ class MainActivity : AppCompatActivity() {
         sizeValue = findViewById(R.id.sizeValue)
         alphaSeek = findViewById(R.id.alphaSeek)
         alphaValue = findViewById(R.id.alphaValue)
+        panelAlphaSeek = findViewById(R.id.panelAlphaSeek)
+        panelAlphaValue = findViewById(R.id.panelAlphaValue)
 
         inputBackendUrl.setText(Prefs.backendUrl(this))
         syncAppearanceUi()
@@ -98,6 +102,15 @@ class MainActivity : AppCompatActivity() {
                 if (!fromUser) return
                 Prefs.setTransparencyPct(this@MainActivity, progress)
                 alphaValue.text = "${Prefs.transparencyPct(this@MainActivity)}%"
+            }
+            override fun onStartTrackingTouch(seek: SeekBar) {}
+            override fun onStopTrackingTouch(seek: SeekBar) {}
+        })
+        panelAlphaSeek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seek: SeekBar, progress: Int, fromUser: Boolean) {
+                if (!fromUser) return
+                Prefs.setPanelAlphaPct(this@MainActivity, progress)
+                panelAlphaValue.text = "${Prefs.panelAlphaPct(this@MainActivity)}%"
             }
             override fun onStartTrackingTouch(seek: SeekBar) {}
             override fun onStopTrackingTouch(seek: SeekBar) {}
@@ -155,6 +168,10 @@ class MainActivity : AppCompatActivity() {
         alphaSeek.min = 20
         alphaSeek.progress = Prefs.transparencyPct(this)
         alphaValue.text = "${Prefs.transparencyPct(this)}%"
+        panelAlphaSeek.max = 80
+        panelAlphaSeek.min = 20
+        panelAlphaSeek.progress = Prefs.panelAlphaPct(this)
+        panelAlphaValue.text = "${Prefs.panelAlphaPct(this)}%"
     }
 
     private fun refreshStatus() {

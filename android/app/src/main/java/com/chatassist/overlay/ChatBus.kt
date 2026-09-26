@@ -1,27 +1,58 @@
 package com.chatassist.overlay
 
 /**
- * In-process bus between ChatReaderService (accessibility) and OverlayService
- * (UI). The reader pushes freshly extracted conversation text; the overlay
- * pulls it when the user opens the panel or taps refresh. No persistence —
- * the latest snapshot only.
+ * Per-chat memory between ChatReaderService (accessibility) and
+ * OverlayService (UI). Each conversation is keyed by
+ * "<package>|<chat title>" (title = whoever you're talking to, e.g.
+ * "Tinder|Sneha"); chats whose title can't be determined fall back to the
+ * bare package key. Only the latest snapshot per key is kept (max 10 chats),
+ * in memory only — a process restart starts fresh.
  */
 object ChatBus {
-    @Volatile
-    var latestApp: String = ""
+    data class ChatSnapshot(
+        val appPackage: String,
+        val title: String?,
+        val text: String,
+        val at: Long,
+    )
+
+    private const val MAX_CHATS = 10
+
+    private val snapshots = LinkedHashMap<String, ChatSnapshot>()
 
     @Volatile
-    var latestText: String = ""
-
-    @Volatile
-    var latestAt: Long = 0L
+    var latestKey: String = ""
+        private set
 
     @Synchronized
-    fun publish(appPackage: String, text: String) {
+    fun publish(key: String, snapshot: ChatSnapshot) {
+        val existing = snapshots[key]
         // Ignore duplicate snapshots so we don't spam the backend.
-        if (appPackage == latestApp && text == latestText) return
-        latestApp = appPackage
-        latestText = text
-        latestAt = System.currentTimeMillis()
+        if (existing != null && existing.text == snapshot.text) return
+        snapshots.remove(key)
+        snapshots[key] = snapshot
+        while (snapshots.size > MAX_CHATS) {
+            snapshots.remove(snapshots.keys.first())
+        }
+        latestKey = key
+    }
+
+    @Synchronized
+    fun get(key: String): ChatSnapshot? = snapshots[key]
+
+    fun labelFor(key: String, snapshot: ChatSnapshot): String {
+        val app = appLabel(snapshot.appPackage)
+        val title = snapshot.title?.takeIf { it.isNotBlank() }
+        return if (title != null) "$title • $app" else app.ifBlank { key }
+    }
+
+    fun appLabel(appPackage: String): String = when (appPackage) {
+        "com.tinder" -> "Tinder"
+        "co.hinge.app" -> "Hinge"
+        "com.bumble.app" -> "Bumble"
+        "com.snapchat.android" -> "Snapchat"
+        "com.instagram.android" -> "Instagram"
+        "com.whatsapp" -> "WhatsApp"
+        else -> appPackage
     }
 }

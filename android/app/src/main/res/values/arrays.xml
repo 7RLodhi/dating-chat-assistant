@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Panel tone selector. Labels and values share order; values are the
+         suggestion-API tone strings ("auto" = match the chat's energy). -->
+    <string-array name="tone_labels">
+        <item>Auto</item>
+        <item>Casual</item>
+        <item>Playful</item>
+        <item>Witty</item>
+        <item>Sincere</item>
+        <item>Flirty</item>
+        <item>Spicy 18+</item>
+    </string-array>
+    <string-array name="tone_values">
+        <item>auto</item>
+        <item>casual</item>
+        <item>playful</item>
+        <item>witty</item>
+        <item>sincere</item>
+        <item>flirty</item>
+        <item>spicy</item>
+    </string-array>
+</resources>

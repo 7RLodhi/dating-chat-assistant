@@ -47,9 +47,21 @@ class ChatReaderService : AccessibilityService() {
 
         try {
             val root = rootInActiveWindow ?: return
-            val text = ChatParser.forPackage(pkg).parse(root)
+            val parser = ChatParser.forPackage(pkg)
+            val text = parser.parse(root)
             if (text.isNotBlank()) {
-                ChatBus.publish(pkg, text)
+                val title = parser.extractTitle(root)
+                    ?.replace("|", " ")?.trim()?.take(40)?.takeIf { it.isNotBlank() }
+                val key = if (title != null) "$pkg|$title" else pkg
+                ChatBus.publish(
+                    key,
+                    ChatBus.ChatSnapshot(
+                        appPackage = pkg,
+                        title = title,
+                        text = text,
+                        at = System.currentTimeMillis(),
+                    ),
+                )
             }
         } catch (_: Exception) {
             // A dating-app UI update must never crash the service.

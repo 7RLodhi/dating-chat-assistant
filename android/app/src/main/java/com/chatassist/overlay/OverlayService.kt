@@ -17,9 +17,12 @@ import android.view.WindowManager
 import android.graphics.Outline
 import android.net.Uri
 import android.view.ViewOutlineProvider
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
@@ -227,27 +230,60 @@ class OverlayService : Service() {
             WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
             PixelFormat.TRANSLUCENT,
         ).apply {
+            // Top 60% of the screen only: anchored near the top, capped height
+            // (the inner list scrolls). Still draggable via the header.
             gravity = Gravity.TOP or Gravity.START
             val bp = bubbleParams
+            val density = resources.displayMetrics.density
             x = (bp?.x ?: 0) + 130
-            y = (bp?.y ?: 300)
+            y = (48 * density).roundToInt()
+            height = (resources.displayMetrics.heightPixels * 0.6).toInt()
         }
-        panel!!.findViewById<Button>(R.id.btnClose).setOnClickListener { togglePanel() }
-        panel!!.findViewById<Button>(R.id.btnRefresh).setOnClickListener { loadSuggestions() }
-        makeDraggable(panel!!.findViewById(R.id.panelHeader), panelParams!!)
+        val panelView = panel!!
+        panelView.alpha = Prefs.panelAlphaPct(this) / 100f
+        panelView.findViewById<Button>(R.id.btnClose).setOnClickListener { togglePanel() }
+        panelView.findViewById<Button>(R.id.btnRefresh).setOnClickListener { loadSuggestions() }
+        setupToneSpinner(panelView)
+        makeDraggable(panelView.findViewById(R.id.panelHeader), panelParams!!)
         windowManager.addView(panel, panelParams)
         loadSuggestions()
     }
 
+    /** Tone selector inside the panel — changing it regenerates immediately. */
+    private fun setupToneSpinner(panelView: View) {
+        val spinner = panelView.findViewById<Spinner>(R.id.toneSpinner)
+        val labels = resources.getStringArray(R.array.tone_labels)
+        val values = resources.getStringArray(R.array.tone_values)
+        spinner.adapter = ArrayAdapter(
+            this, android.R.layout.simple_spinner_item, labels
+        ).also { it.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item) }
+        var initializing = true
+        spinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>, v: View?, position: Int, id: Long) {
+                if (initializing) return
+                Prefs.setTone(this@OverlayService, values[position])
+                loadSuggestions()
+            }
+            override fun onNothingSelected(parent: AdapterView<*>) {}
+        }
+        spinner.setSelection(values.indexOf(Prefs.tone(this)).coerceAtLeast(0))
+        initializing = false
+    }
+
     private fun loadSuggestions() {
         val panelView = panel ?: return
+        val chatLabel = panelView.findViewById<TextView>(R.id.chatLabel)
         val moodText = panelView.findViewById<TextView>(R.id.moodText)
         val list = panelView.findViewById<LinearLayout>(R.id.suggestionList)
-        val text = ChatBus.latestText
+        val key = ChatBus.latestKey
+        val snapshot = ChatBus.get(key)
+        val text = snapshot?.text.orEmpty()
         if (text.isBlank()) {
+            chatLabel.text = ""
             moodText.text = "No chat text captured yet — open a conversation in a supported dating app."
             return
         }
+        chatLabel.text = ChatBus.labelFor(key, snapshot!!)
         moodText.text = "Thinking…"
         list.removeAllViews()
         ApiClient.fetchSuggestions(

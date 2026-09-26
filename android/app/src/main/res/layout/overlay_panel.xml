@@ -2,7 +2,7 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/panelRoot"
     android:layout_width="320dp"
-    android:layout_height="wrap_content"
+    android:layout_height="match_parent"
     android:background="@drawable/panel_background"
     android:elevation="8dp"
     android:orientation="vertical"
@@ -33,6 +33,14 @@
     </LinearLayout>
 
     <TextView
+        android:id="@+id/chatLabel"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text=""
+        android:textColor="#6B7280"
+        android:textSize="12sp" />
+
+    <TextView
         android:id="@+id/moodText"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
@@ -41,12 +49,25 @@
         android:textColor="#6B7280"
         android:textSize="13sp" />
 
-    <LinearLayout
-        android:id="@+id/suggestionList"
+    <Spinner
+        android:id="@+id/toneSpinner"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_marginTop="8dp" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
         android:layout_marginTop="8dp"
-        android:orientation="vertical" />
+        android:layout_weight="1"
+        android:fillViewport="true">
+
+        <LinearLayout
+            android:id="@+id/suggestionList"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+    </ScrollView>
 
     <Button
         android:id="@+id/btnRefresh"

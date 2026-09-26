@@ -69,6 +69,19 @@ object Prefs {
         ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE)
             .getString(KEY_CUSTOM_ICON_URI, "").orEmpty()
 
+    const val DEFAULT_PANEL_ALPHA_PCT = 80
+
+    private const val KEY_PANEL_ALPHA = "panel_alpha_pct"
+
+    fun panelAlphaPct(ctx: Context): Int =
+        ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            .getInt(KEY_PANEL_ALPHA, DEFAULT_PANEL_ALPHA_PCT)
+
+    fun setPanelAlphaPct(ctx: Context, pct: Int) {
+        ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+            .putInt(KEY_PANEL_ALPHA, pct.coerceIn(20, 80)).apply()
+    }
+
     fun setCustomIconUri(ctx: Context, uri: String) {
         ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
             .putString(KEY_CUSTOM_ICON_URI, uri).apply()

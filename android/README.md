@@ -79,10 +79,17 @@ Gradle 8.7+ and JDK 17+.)
 5. Tap **Start bubble**, open Tinder/Hinge/Bumble → bubble appears → open a
    chat → tap bubble → suggestions. Tap a suggestion to copy it, then paste
    it into the chat yourself.
-6. **Move the panel:** drag it by its title bar — it stays where you drop it.
-7. **Customize the bubble** (same screen, Fooview-style): pick initials / 💬 /
-   minimal dot / your own gallery image, drag the size (40–96 dp) and
-   transparency (20–100%) sliders, then tap **Start bubble** again to apply.
+6. **Move the panel:** drag it by its title bar — it lives in the top 60% of
+   the screen and the suggestion list scrolls inside it.
+7. **Steer the vibe:** the tone dropdown inside the panel (Auto/Casual/…/
+   Spicy 18+) regenerates suggestions immediately on change.
+8. **Customize** (same screen, Fooview-style): bubble icon (initials / 💬 /
+   minimal dot / gallery image), bubble size (40–96 dp) and transparency
+   (20–100%), panel opacity (20–80%). Then tap **Start bubble** again to apply.
+9. **Multiple matches:** the app remembers the latest conversation per chat
+   (keyed by app + contact name shown in the header) — switch chats and the
+   panel shows which chat its suggestions belong to ("Sneha • Tinder").
+   Memory is in-RAM only (max 10 chats); a process restart starts fresh.
 
 ## Tuning per-app parsers
 
