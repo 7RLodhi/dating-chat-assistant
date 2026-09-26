@@ -117,6 +117,18 @@ contract as the web app's `/api/suggest`, so any improvement there (tones,
 Hinglish, name puns) flows to the overlay for free. Default URL is the
 production web app; override it on the onboarding screen.
 
+## Behavior notes
+
+- **Panel auto-dismiss:** the panel collapses by itself when you leave all
+  supported apps (home, app switch, any other app). The bubble stays — tap it
+  to reopen. Switching between two supported apps keeps the panel open but
+  showing the previous chat until you tap Refresh (auto-refresh on switch is
+  a planned follow-up).
+- **Privacy model:** the reader observes every foreground-window change, but
+  only the *package name* — message text is extracted exclusively inside the
+  six supported apps, never anywhere else. This is also stated verbatim in
+  the on-device accessibility description.
+
 ## Troubleshooting
 
 **`mergeDebugResources` fails with "Failed to delete some children":**

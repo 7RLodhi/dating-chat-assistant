@@ -8,6 +8,8 @@ package com.chatassist.overlay
  * bare package key. Only the latest snapshot per key is kept (max 10 chats),
  * in memory only — a process restart starts fresh.
  */
+import java.util.concurrent.CopyOnWriteArrayList
+
 object ChatBus {
     data class ChatSnapshot(
         val appPackage: String,
@@ -17,6 +19,45 @@ object ChatBus {
     )
 
     private const val MAX_CHATS = 10
+
+    /**
+     * Packages whose chat text may be read. Single source of truth — the
+     * reader gates parsing on this, and the overlay gates auto-dismiss on it.
+     */
+    val SUPPORTED_PACKAGES = setOf(
+        "com.tinder",
+        "co.hinge.app",
+        "com.bumble.app",
+        "com.snapchat.android",
+        "com.instagram.android",
+        "com.whatsapp",
+    )
+
+    /**
+     * Package of the current foreground window, updated on every window
+     * state change — including unsupported apps and the launcher. Only the
+     * package name is observed here, never any content.
+     */
+    @Volatile
+    var foregroundPackage: String = ""
+        private set
+
+    private val foregroundListeners = CopyOnWriteArrayList<(String) -> Unit>()
+
+    fun addForegroundListener(listener: (String) -> Unit) {
+        foregroundListeners.add(listener)
+    }
+
+    fun removeForegroundListener(listener: (String) -> Unit) {
+        foregroundListeners.remove(listener)
+    }
+
+    fun notifyForeground(packageName: String) {
+        foregroundPackage = packageName
+        for (listener in foregroundListeners) {
+            runCatching { listener(packageName) }
+        }
+    }
 
     private val snapshots = LinkedHashMap<String, ChatSnapshot>()
 

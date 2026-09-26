@@ -8,7 +8,9 @@ import android.app.Service
 import android.content.Intent
 import android.graphics.PixelFormat
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.MotionEvent
@@ -50,6 +52,30 @@ class OverlayService : Service() {
     private var panelParams: WindowManager.LayoutParams? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    private val mainHandler = Handler(Looper.getMainLooper())
+
+    /**
+     * Collapses the panel when the foreground leaves all supported apps
+     * (home screen, app switch, any other app). Our own package is excluded
+     * so the panel never dismisses itself.
+     */
+    private val foregroundListener: (String) -> Unit = { pkg ->
+        if (pkg != packageName && pkg !in ChatBus.SUPPORTED_PACKAGES) {
+            collapsePanelIfOpen()
+        }
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        ChatBus.addForegroundListener(foregroundListener)
+    }
+
+    private fun collapsePanelIfOpen() {
+        mainHandler.post {
+            if (panel != null) togglePanel()
+        }
+    }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         startForeground(NOTIF_ID, buildNotification())
@@ -377,6 +403,7 @@ class OverlayService : Service() {
     }
 
     override fun onDestroy() {
+        ChatBus.removeForegroundListener(foregroundListener)
         bubble?.let { runCatching { windowManager.removeView(it) } }
         panel?.let { runCatching { windowManager.removeView(it) } }
         bubble = null

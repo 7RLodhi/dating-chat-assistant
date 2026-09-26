@@ -8,8 +8,11 @@ import com.chatassist.overlay.parsers.ChatParser
  * Reads the visible chat conversation inside supported dating apps.
  *
  * Guardrails (deliberate, do not loosen without review):
- * - Only the whitelisted packages below are ever inspected (also enforced in
- *   res/xml/accessibility_service_config.xml).
+ * - Message text is extracted ONLY from [ChatBus.SUPPORTED_PACKAGES].
+ * - The service additionally observes every foreground-window change (package
+ *   name only, never content) so the overlay can dismiss its panel when you
+ *   leave — window-state events are cheap; content is still never touched
+ *   outside the supported packages.
  * - Read-only: extracts visible text, never performs clicks, gestures, or
  *   sends anything on the user's behalf.
  * - Debounced (1.5s) so rapid scroll events don't spam extraction.
@@ -17,14 +20,6 @@ import com.chatassist.overlay.parsers.ChatParser
 class ChatReaderService : AccessibilityService() {
 
     companion object {
-        val SUPPORTED_PACKAGES = setOf(
-            "com.tinder",
-            "co.hinge.app",
-            "com.bumble.app",
-            "com.snapchat.android",
-            "com.instagram.android",
-            "com.whatsapp",
-        )
         private const val DEBOUNCE_MS = 1500L
     }
 
@@ -36,7 +31,10 @@ class ChatReaderService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val pkg = event?.packageName?.toString() ?: return
-        if (pkg !in SUPPORTED_PACKAGES) return
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            ChatBus.notifyForeground(pkg)
+        }
+        if (pkg !in ChatBus.SUPPORTED_PACKAGES) return
         if (event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED &&
             event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
         ) return
