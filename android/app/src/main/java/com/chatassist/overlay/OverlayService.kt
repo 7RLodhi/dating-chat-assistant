@@ -390,8 +390,27 @@ class OverlayService : Service() {
                             setTextColor(getColor(android.R.color.black))
                         }
                         card.setOnClickListener {
-                            copyToClipboard(s)
-                            Toast.makeText(this, "Copied — paste it into your chat", Toast.LENGTH_SHORT).show()
+                            if (Prefs.autoPaste(this)) {
+                                ChatBus.requestPaste(s) { ok ->
+                                    if (ok) {
+                                        Toast.makeText(
+                                            this,
+                                            "Pasted into chat — review and press send",
+                                            Toast.LENGTH_SHORT,
+                                        ).show()
+                                    } else {
+                                        copyToClipboard(s)
+                                        Toast.makeText(
+                                            this,
+                                            "Couldn't find the chat box — copied instead",
+                                            Toast.LENGTH_SHORT,
+                                        ).show()
+                                    }
+                                }
+                            } else {
+                                copyToClipboard(s)
+                                Toast.makeText(this, "Copied — paste it into your chat", Toast.LENGTH_SHORT).show()
+                            }
                         }
                         list.addView(card)
                     }

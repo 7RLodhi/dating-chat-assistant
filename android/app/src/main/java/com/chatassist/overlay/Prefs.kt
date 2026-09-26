@@ -77,6 +77,19 @@ object Prefs {
             .putInt(KEY_PANEL_ALPHA, pct.coerceIn(20, 80)).apply()
     }
 
+    // Tap-to-paste automation (opt-in, default off): tapping a suggestion
+    // fills the dating app's chat input; the user always presses send.
+    private const val KEY_AUTO_PASTE = "auto_paste"
+
+    fun autoPaste(ctx: Context): Boolean =
+        ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            .getBoolean(KEY_AUTO_PASTE, false)
+
+    fun setAutoPaste(ctx: Context, enabled: Boolean) {
+        ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+            .putBoolean(KEY_AUTO_PASTE, enabled).apply()
+    }
+
     // Panel size in dp. 0/0 = automatic (320dp wide, 60% of screen height).
     private const val KEY_PANEL_WIDTH = "panel_width_dp"
     private const val KEY_PANEL_HEIGHT = "panel_height_dp"

@@ -42,6 +42,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var alphaValue: TextView
     private lateinit var panelAlphaSeek: SeekBar
     private lateinit var panelAlphaValue: TextView
+    private lateinit var autoPasteSwitch: androidx.appcompat.widget.SwitchCompat
 
     private val pickImage = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri == null) {
@@ -97,6 +98,11 @@ class MainActivity : AppCompatActivity() {
         alphaValue = findViewById(R.id.alphaValue)
         panelAlphaSeek = findViewById(R.id.panelAlphaSeek)
         panelAlphaValue = findViewById(R.id.panelAlphaValue)
+        autoPasteSwitch = findViewById(R.id.autoPasteSwitch)
+        autoPasteSwitch.isChecked = Prefs.autoPaste(this)
+        autoPasteSwitch.setOnCheckedChangeListener { _, checked ->
+            Prefs.setAutoPaste(this, checked)
+        }
 
         versionFooter.text = "v${appVersionName()} (${appVersionCode()})"
         syncAppearanceUi()

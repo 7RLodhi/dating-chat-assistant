@@ -189,6 +189,30 @@
             android:textColor="#6B7280"
             android:textSize="13sp" />
 
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="Automation (opt-in)"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+
+        <androidx.appcompat.widget.SwitchCompat
+            android:id="@+id/autoPasteSwitch"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="Tap suggestion pastes it into the chat input"
+            android:textSize="14sp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:text="You always press send yourself. Off = tap copies to clipboard."
+            android:textColor="#6B7280"
+            android:textSize="13sp" />
+
         <Button
             android:id="@+id/btnStart"
             android:layout_width="wrap_content"

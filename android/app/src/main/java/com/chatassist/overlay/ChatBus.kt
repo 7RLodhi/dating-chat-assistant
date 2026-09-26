@@ -81,6 +81,32 @@ object ChatBus {
     @Synchronized
     fun get(key: String): ChatSnapshot? = snapshots[key]
 
+    /**
+     * Tap-to-paste plumbing. The overlay (plain Service, no node access)
+     * requests a paste; the reader service performs it and reports back.
+     * Requests are strictly user-initiated (one overlay tap = at most one
+     * paste) — there is intentionally no queue, no automation loop.
+     */
+    private var pasteHandler: ((String, (Boolean) -> Unit) -> Unit)? = null
+
+    @Synchronized
+    fun setPasteHandler(handler: ((String, (Boolean) -> Unit) -> Unit)?) {
+        pasteHandler = handler
+    }
+
+    fun requestPaste(text: String, callback: (Boolean) -> Unit) {
+        val handler = synchronized(this) { pasteHandler }
+        if (handler == null) {
+            callback(false)
+            return
+        }
+        try {
+            handler(text, callback)
+        } catch (_: Exception) {
+            callback(false)
+        }
+    }
+
     fun labelFor(key: String, snapshot: ChatSnapshot): String {
         val app = appLabel(snapshot.appPackage)
         val title = snapshot.title?.takeIf { it.isNotBlank() }
