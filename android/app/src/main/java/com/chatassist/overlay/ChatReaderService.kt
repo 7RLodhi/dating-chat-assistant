@@ -21,6 +21,7 @@ class ChatReaderService : AccessibilityService() {
             "com.tinder",
             "co.hinge.app",
             "com.bumble.app",
+            "com.snapchat.android",
         )
         private const val DEBOUNCE_MS = 1500L
     }

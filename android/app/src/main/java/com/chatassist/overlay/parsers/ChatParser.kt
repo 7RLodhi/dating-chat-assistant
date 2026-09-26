@@ -55,8 +55,16 @@ open class ChatParser(val appPackage: String) {
         }
     }
 
+    /**
+     * Whole-text matches that are UI chrome, not chat (e.g. delivery
+     * statuses). Exact match — unlike [skipTextSubstrings] — so that real
+     * messages merely containing these words are never dropped.
+     */
+    protected open val skipExactTexts: Set<String> = emptySet()
+
     private fun isChrome(text: String): Boolean {
         if (text.length > 500) return true // bios / T&Cs walls, not chat
+        if (skipExactTexts.any { it.equals(text, ignoreCase = true) }) return true
         return skipTextSubstrings.any { text.contains(it, ignoreCase = true) }
     }
 
@@ -71,6 +79,7 @@ open class ChatParser(val appPackage: String) {
             "com.tinder" -> TinderParser()
             "co.hinge.app" -> HingeParser()
             "com.bumble.app" -> BumbleParser()
+            "com.snapchat.android" -> SnapchatParser()
             else -> ChatParser(appPackage)
         }
     }
@@ -94,5 +103,23 @@ class HingeParser : ChatParser("co.hinge.app") {
 class BumbleParser : ChatParser("com.bumble.app") {
     override val skipTextSubstrings = super.skipTextSubstrings + listOf(
         "Time left", "expires in", "Make the first move",
+    )
+}
+
+/**
+ * Snapchat: delivery statuses ("Delivered", "Opened"…) and date headers sit
+ * as text under messages, so they are exact-matched (a real message merely
+ * containing those words must survive). Multi-word CTAs are substring-safe.
+ * Note: snaps/voice notes carry no text — only typed chat is captured, and
+ * view-once messages are read only while visible on screen.
+ */
+class SnapchatParser : ChatParser("com.snapchat.android") {
+    override val skipTextSubstrings = super.skipTextSubstrings + listOf(
+        "Send a chat", "New Snap", "New Chat", "Tap to Chat", "is typing", "just now",
+    )
+    override val skipExactTexts = setOf(
+        "Delivered", "Opened", "Received", "Sent", "Viewed",
+        "Today", "Yesterday",
+        "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday",
     )
 }

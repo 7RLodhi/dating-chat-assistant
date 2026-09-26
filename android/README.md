@@ -1,10 +1,15 @@
 # Chat Assist Overlay — Android app (v1 scaffold)
 
 Native floating-overlay companion to the web app. A draggable bubble floats
-over Tinder / Hinge / Bumble; an AccessibilityService reads the visible chat
-text (those three apps only); the overlay sends it to your suggestion backend
-and shows replies you can tap-to-copy. **Read-only by design: the app never
-types, taps, or sends anything into other apps.**
+over Tinder / Hinge / Bumble / Snapchat; an AccessibilityService reads the
+visible chat text (those four apps only); the overlay sends it to your
+suggestion backend and shows replies you can tap-to-copy. **Read-only by
+design: the app never types, taps, or sends anything into other apps.**
+
+Snapchat notes: only typed chat messages carry text — photo/video snaps and
+voice notes can't be read. View-once messages are captured only while visible
+on screen. Delivery statuses (Delivered/Opened/…) and date headers are
+filtered out automatically.
 
 ## Project layout
 
@@ -70,9 +75,11 @@ Gradle 8.7+ and JDK 17+.)
 `parsers/ChatParser.kt` walks each app's accessibility tree generically
 (left = match, right = you, top-to-bottom). When a dating app redesigns its
 chat UI, extraction degrades — fix it per app in `TinderParser`,
-`HingeParser`, or `BumbleParser` (each has a `skipTextSubstrings` list for
-app chrome). Add new apps by subclassing and registering the package in
-`ChatReaderService.SUPPORTED_PACKAGES` **and** in
+`HingeParser`, `BumbleParser`, or `SnapchatParser` (each has a
+`skipTextSubstrings` list for app chrome, plus `skipExactTexts` for
+whole-text UI labels like delivery statuses that must never swallow real
+messages containing those words). Add new apps by subclassing and registering
+the package in `ChatReaderService.SUPPORTED_PACKAGES` **and** in
 `res/xml/accessibility_service_config.xml`.
 
 ## Backend contract
