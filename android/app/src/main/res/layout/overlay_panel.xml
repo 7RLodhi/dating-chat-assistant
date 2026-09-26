@@ -15,14 +15,11 @@
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
-        <TextView
+        <Spinner
+            android:id="@+id/toneSpinner"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Suggestions"
-            android:textColor="@color/ink"
-            android:textSize="16sp"
-            android:textStyle="bold" />
+            android:layout_weight="1" />
 
         <Button
             android:id="@+id/btnClose"
@@ -48,12 +45,6 @@
         android:text="Paste or open a chat to begin."
         android:textColor="#6B7280"
         android:textSize="13sp" />
-
-    <Spinner
-        android:id="@+id/toneSpinner"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp" />
 
     <ScrollView
         android:layout_width="match_parent"

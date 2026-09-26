@@ -113,9 +113,15 @@ class OverlayService : Service() {
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT,
         ).apply {
+            // Spawn docked to the vertical center of the right edge — the
+            // natural thumb spot — instead of top-left. Still draggable.
+            // (Kept as TOP|START with a computed x so the existing drag math
+            // stays correct; END gravity would invert horizontal dragging.)
             gravity = Gravity.TOP or Gravity.START
-            x = 0
-            y = 300
+            val metrics = resources.displayMetrics
+            val sizePx = (Prefs.bubbleSizeDp(this@OverlayService) * metrics.density).roundToInt()
+            x = metrics.widthPixels - sizePx
+            y = (metrics.heightPixels - sizePx) / 2
         }
 
         var downX = 0

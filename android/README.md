@@ -77,9 +77,10 @@ Gradle 8.7+ and JDK 17+.)
       explanation first — it states exactly what is read and why)
 4. Tap **Send test suggestion request** to verify the backend URL works
    without opening Tinder.
-5. Tap **Start bubble**, open Tinder/Hinge/Bumble → bubble appears → open a
-   chat → tap bubble → suggestions. Tap a suggestion to copy it, then paste
-   it into the chat yourself.
+5. Tap **Start bubble** (it spawns docked to the middle of the right edge —
+   drag it anywhere), open a chat → tap bubble → suggestions. Tap a
+   suggestion to copy it, then paste it into the chat yourself. The tone
+   dropdown lives in the panel header — changing it regenerates immediately.
 6. **Move the panel:** drag it by its title bar — it lives in the top 60% of
    the screen and the suggestion list scrolls inside it. **Resize it:** drag
    the ◢ grip in the bottom-right corner; the size is remembered for next
