@@ -821,6 +821,7 @@ export default function AssistantApp() {
         open={openDeck === "darkFantasy"}
         onClose={() => setOpenDeck(null)}
         blockedReason={minorBlockReason(activeMatch?.facts)}
+        language={language}
       />
       <NewMatchModal
         open={showNewMatchModal}

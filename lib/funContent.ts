@@ -90,7 +90,8 @@ export const DARK_FANTASY_ITEMS: string[] = [
   "बारिश के दौरान कैंपिंग टेंट के अंदर sex",
 ];
 
-/** Turns a fantasy item into a ready-to-send question. */
+/** Turns a fantasy item into a ready-to-send question (strips a trailing
+ * "?" first so AI items that already end as questions don't get "??"). */
 export function fantasyAsQuestion(item: string): string {
-  return `Sach batao 😏 — ${item}? Haan ya na?`;
+  return `Sach batao 😏 — ${item.trim().replace(/\?+$/, "")}? Haan ya na?`;
 }

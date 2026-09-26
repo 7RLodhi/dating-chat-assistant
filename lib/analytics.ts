@@ -38,6 +38,7 @@ type EventName =
   | "side_menu_opened"
   | "fun_deck_opened"
   | "fun_item_copied"
+  | "fantasy_generated"
   | "adult_content_confirmed";
 
 export function trackEvent(name: EventName, props: Record<string, unknown> = {}) {

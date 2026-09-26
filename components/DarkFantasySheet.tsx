@@ -4,6 +4,10 @@ import { useEffect, useState } from "react";
 import CopyChip from "./CopyChip";
 import { trackEvent } from "@/lib/analytics";
 import { DARK_FANTASY_ITEMS, fantasyAsQuestion } from "@/lib/funContent";
+import { Language } from "@/lib/types";
+
+const GENERATE_COUNT = 8;
+const MAX_AI_ITEMS = 24;
 
 const AGE_CONFIRM_KEY = "dca_18plus_confirmed_v0";
 
@@ -11,13 +15,46 @@ export default function DarkFantasySheet({
   open,
   onClose,
   blockedReason,
+  language,
 }: {
   open: boolean;
   onClose: () => void;
   /** Set when the active match appears to be under 18 — content is withheld. */
   blockedReason: string | null;
+  language: Language;
 }) {
   const [confirmed, setConfirmed] = useState(false);
+  const [aiItems, setAiItems] = useState<string[]>([]);
+  const [generating, setGenerating] = useState(false);
+  const [genError, setGenError] = useState<string | null>(null);
+
+  async function handleGenerate() {
+    if (generating || aiItems.length >= MAX_AI_ITEMS) return;
+    setGenerating(true);
+    setGenError(null);
+    try {
+      const res = await fetch("/api/fantasy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          language: language === "auto" ? "hindi" : language,
+          avoid: [...DARK_FANTASY_ITEMS, ...aiItems],
+          count: GENERATE_COUNT,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Couldn't generate ideas.");
+      const fresh = (data.items as string[]).filter(
+        (item) => !aiItems.some((a) => a.toLowerCase() === item.toLowerCase())
+      );
+      setAiItems((prev) => [...prev, ...fresh].slice(0, MAX_AI_ITEMS));
+      trackEvent("fantasy_generated", { count: fresh.length, language });
+    } catch (err) {
+      setGenError(err instanceof Error ? err.message : "Something went wrong.");
+    } finally {
+      setGenerating(false);
+    }
+  }
 
   useEffect(() => {
     if (open) {
@@ -108,6 +145,45 @@ export default function DarkFantasySheet({
                 />
               </div>
             ))}
+            {aiItems.length > 0 && (
+              <p className="px-1 pt-1 text-[11px] font-medium text-gray-500">✨ Fresh AI ideas</p>
+            )}
+            {aiItems.map((item, i) => (
+              <div
+                key={`ai-${i}`}
+                className="flex items-center gap-2 rounded-xl border border-brand-200 bg-brand-50/40 p-3"
+              >
+                <p className="flex-1 text-sm text-gray-900">{item}</p>
+                <CopyChip
+                  text={fantasyAsQuestion(item)}
+                  label="Ask"
+                  onCopied={() =>
+                    trackEvent("fun_item_copied", { deck: "dark_fantasy_ai", part: "question" })
+                  }
+                />
+                <CopyChip
+                  text={item}
+                  onCopied={() =>
+                    trackEvent("fun_item_copied", { deck: "dark_fantasy_ai", part: "raw" })
+                  }
+                />
+              </div>
+            ))}
+            {aiItems.length >= MAX_AI_ITEMS ? (
+              <p className="px-1 text-center text-[11px] text-gray-400">
+                That&apos;s plenty for now 😉 — vote-worthy ones live above.
+              </p>
+            ) : (
+              <button
+                type="button"
+                onClick={handleGenerate}
+                disabled={generating}
+                className="w-full rounded-xl border border-dashed border-brand-300 px-4 py-2.5 text-sm font-medium text-brand-700 hover:border-brand-500 disabled:opacity-60"
+              >
+                {generating ? "Dreaming up ideas…" : "✨ Generate more ideas"}
+              </button>
+            )}
+            {genError && <p className="px-1 text-xs text-red-600">{genError}</p>}
           </div>
         )}
       </div>

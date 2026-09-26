@@ -455,6 +455,51 @@ export const STYLE_JSON_SCHEMA = {
   required: ["summary", "traits"],
 };
 
+// ---------------------------------------------------------------------------
+// Dark Fantasy generation (AI-written deck ideas, same guardrails as display)
+// ---------------------------------------------------------------------------
+
+export const FANTASY_SYSTEM_PROMPT = `You write short romantic-fantasy scenario ideas for consenting adults to share on a dating app, in the style of classic Hindi "dark fantasy" would-you-rather prompts: adventurous, slightly forbidden locations and moments. Each item is a brief scenario phrase the user sends as a flirty "would you?" question — suggestive, never explicit.
+
+Hard rules:
+- Keep every item suggestive, NEVER explicit or graphic. No sexual acts described, no body parts, no crude language.
+- No coercion, no non-consent themes, nothing involving minors, no incapacitation scenarios.
+- Under 15 words per item. Vary the settings: mix indoor/outdoor, day/night, weather, city spots, travel moments.
+- Do not repeat any item from the AVOID list — rephrase into new settings instead of near-duplicates.
+- Write naturally in the requested language: casual Hindi as actually texted (not formal/shuddh), or natural Hinglish/English if asked.
+- Output must be valid JSON matching the provided schema. No text outside the JSON.`;
+
+export function buildFantasyPrompt(params: {
+  language: string;
+  count: number;
+  avoid: string[];
+}): string {
+  const { language, count, avoid } = params;
+  const avoidBlock = avoid.length > 0 ? avoid.map((a) => `- ${a}`).join("\n") : "(none yet)";
+  return `Generate ${count} fresh dark-fantasy scenario ideas in ${language}.
+
+AVOID (already exist — do not repeat or closely rephrase):
+${avoidBlock}
+
+Return JSON matching this schema:
+{
+  "items": ["string", "... short scenario phrases, each under 15 words"]
+}`;
+}
+
+export const FANTASY_JSON_SCHEMA = {
+  type: "object",
+  properties: {
+    items: {
+      type: "array",
+      minItems: 1,
+      maxItems: 10,
+      items: { type: "string" },
+    },
+  },
+  required: ["items"],
+};
+
 // JSON Schemas used for Anthropic's tool-call-based structured output (see
 // lib/llm.ts). The OpenAI path relies on json_object mode plus the schema
 // described in the prompt text above, so these aren't needed there — but

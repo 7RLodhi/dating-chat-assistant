@@ -98,6 +98,16 @@ export interface OutcomeRequestBody {
   replied: boolean;
 }
 
+export interface FantasyRequestBody {
+  language?: string;
+  avoid?: string[];
+  count?: number;
+}
+
+export interface FantasyResponse {
+  items: string[];
+}
+
 export type OccupationType = "student" | "professional" | "";
 export type EducationLevel = "school" | "college" | "";
 
