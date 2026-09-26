@@ -167,6 +167,7 @@ class BumbleParser : ChatParser("com.bumble.app") {
 class SnapchatParser : ChatParser("com.snapchat.android") {
     override val skipTextSubstrings = super.skipTextSubstrings + listOf(
         "Send a chat", "New Snap", "New Chat", "Tap to Chat", "is typing", "just now",
+        "Enable notifications", "Don't miss", "notification_cta_button",
     )
     override val skipExactTexts = setOf(
         "Delivered", "Opened", "Received", "Sent", "Viewed",

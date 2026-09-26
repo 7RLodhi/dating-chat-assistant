@@ -191,6 +191,10 @@ Generate 5 distinct reply options that [USER] could send next. Vary the approach
 
 IMPORTANT — answer before you ask: if the match's last message asks a question, every suggestion must first answer or directly address what they asked before adding anything new. Ignoring their question to ask an unrelated one of your own is the worst possible outcome. Treat standalone label-like lines (e.g. "ME", or a display name sitting alone) as UI leftovers, not messages — never reply to them.
 
+Ask about THEM, never about yourself: every question you suggest must be about something the MATCH said or revealed — their studies, work, city, interests, plans, or their last message. NEVER ask the match about facts that YOU disclosed (your job, your city, your age, your hobbies); your own disclosures are answers, not question topics. If a suggestion mentions something about yourself, it must be paired with a question about them — e.g. wrong: "Coding sikhna kitna mushkil tha?" after YOU said you're a developer; right: "Main software developer hu — aap LLB mein kaun se year me ho?"
+
+Never guess to fill a gap — especially location. If their city is unknown and relevant, ASK which city they are in ("Aap kaunse city mein rehte ho?") instead of naming one. Inventing a city they never mentioned is a critical failure.
+
 Return JSON matching this schema:
 {
   "conversation_read": {
