@@ -1,15 +1,25 @@
 # Chat Assist Overlay — Android app (v1 scaffold)
 
 Native floating-overlay companion to the web app. A draggable bubble floats
-over Tinder / Hinge / Bumble / Snapchat; an AccessibilityService reads the
-visible chat text (those four apps only); the overlay sends it to your
-suggestion backend and shows replies you can tap-to-copy. **Read-only by
-design: the app never types, taps, or sends anything into other apps.**
+over Tinder / Hinge / Bumble / Snapchat / Instagram / WhatsApp; an
+AccessibilityService reads the visible chat text (those six apps only); the
+overlay sends it to your suggestion backend and shows replies you can
+tap-to-copy. **Read-only by design: the app never types, taps, or sends
+anything into other apps.**
 
 Snapchat notes: only typed chat messages carry text — photo/video snaps and
 voice notes can't be read. View-once messages are captured only while visible
 on screen. Delivery statuses (Delivered/Opened/…) and date headers are
 filtered out automatically.
+
+Instagram notes: "Seen" receipts and the message-box hint are filtered.
+Suggested quick-reply chips look identical to short real messages, so they
+are left in — delete the odd stray row if one slips through.
+
+WhatsApp notes: message timestamps glued inside bubbles ("Hello\n10:30 pm")
+are stripped automatically, as are encryption notices, unread dividers,
+presence lines and date headers. Voice notes and quoted blocks have no
+separable text; quoted replies appear as plain lines.
 
 ## Project layout
 
@@ -75,10 +85,12 @@ Gradle 8.7+ and JDK 17+.)
 `parsers/ChatParser.kt` walks each app's accessibility tree generically
 (left = match, right = you, top-to-bottom). When a dating app redesigns its
 chat UI, extraction degrades — fix it per app in `TinderParser`,
-`HingeParser`, `BumbleParser`, or `SnapchatParser` (each has a
-`skipTextSubstrings` list for app chrome, plus `skipExactTexts` for
-whole-text UI labels like delivery statuses that must never swallow real
-messages containing those words). Add new apps by subclassing and registering
+`HingeParser`, `BumbleParser`, `SnapchatParser`, `InstagramParser`, or
+`WhatsAppParser`. Three filter tiers, in increasing caution:
+`skipTextSubstrings` for unmistakable multi-word chrome, `skipExactTexts`
+for whole-text UI labels (delivery statuses, presence lines) that must never
+swallow real messages containing those words, and `skipPatterns` for anchored
+regexes like locale date headers. Add new apps by subclassing and registering
 the package in `ChatReaderService.SUPPORTED_PACKAGES` **and** in
 `res/xml/accessibility_service_config.xml`.
 
@@ -90,6 +102,15 @@ expects `{suggestions:[{text,tone}], conversation_read:{summary}}` — the same
 contract as the web app's `/api/suggest`, so any improvement there (tones,
 Hinglish, name puns) flows to the overlay for free. Default URL is the
 production web app; override it on the onboarding screen.
+
+## Troubleshooting
+
+**`mergeDebugResources` fails with "Failed to delete some children":**
+this project's `app/build/` lives under OneDrive, whose sync locks files
+while Gradle tries to clean them. Fix: delete `android/app/build/` and
+rebuild. (Long-term: right-click the `android` folder in Explorer →
+"Always keep on this device" so OneDrive stops treating build outputs as
+cloud placeholders.)
 
 ## Before any public/Play Store release
 

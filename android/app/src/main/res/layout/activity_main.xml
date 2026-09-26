@@ -21,7 +21,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:text="Two permissions, then the bubble works inside Tinder, Hinge, Bumble and Snapchat."
+            android:text="Two permissions, then the bubble works inside Tinder, Hinge, Bumble, Snapchat, Instagram and WhatsApp."
             android:textColor="#6B7280"
             android:textSize="14sp" />
 

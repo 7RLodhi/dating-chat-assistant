@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Chat Assist Overlay</string>
-    <string name="accessibility_description">Reads the current chat conversation inside supported apps (Tinder, Hinge, Bumble, Snapchat) so the floating assistant can suggest replies. Nothing is sent automatically — you always send messages yourself.</string>
+    <string name="accessibility_description">Reads the current chat conversation inside supported apps (Tinder, Hinge, Bumble, Snapchat, Instagram, WhatsApp) so the floating assistant can suggest replies. Nothing is sent automatically — you always send messages yourself.</string>
     <string name="notif_channel_name">Assistant bubble</string>
     <string name="notif_text">Chat Assist bubble is active</string>
 </resources>

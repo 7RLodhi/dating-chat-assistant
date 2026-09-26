@@ -25,7 +25,7 @@ open class ChatParser(val appPackage: String) {
 
     data class Bubble(val text: String, val top: Int, val centerX: Int)
 
-    fun parse(root: AccessibilityNodeInfo?): String {
+    open fun parse(root: AccessibilityNodeInfo?): String {
         if (root == null) return ""
         val bubbles = mutableListOf<Bubble>()
         collectBubbles(root, bubbles)
@@ -62,9 +62,17 @@ open class ChatParser(val appPackage: String) {
      */
     protected open val skipExactTexts: Set<String> = emptySet()
 
+    /**
+     * Full-text patterns for chrome like locale date headers ("12/09/26").
+     * Anchored patterns only — never unanchored, which would swallow real
+     * messages.
+     */
+    protected open val skipPatterns: List<Regex> = emptyList()
+
     private fun isChrome(text: String): Boolean {
         if (text.length > 500) return true // bios / T&Cs walls, not chat
         if (skipExactTexts.any { it.equals(text, ignoreCase = true) }) return true
+        if (skipPatterns.any { it.matches(text) }) return true
         return skipTextSubstrings.any { text.contains(it, ignoreCase = true) }
     }
 
@@ -80,6 +88,8 @@ open class ChatParser(val appPackage: String) {
             "co.hinge.app" -> HingeParser()
             "com.bumble.app" -> BumbleParser()
             "com.snapchat.android" -> SnapchatParser()
+            "com.instagram.android" -> InstagramParser()
+            "com.whatsapp" -> WhatsAppParser()
             else -> ChatParser(appPackage)
         }
     }
@@ -122,4 +132,46 @@ class SnapchatParser : ChatParser("com.snapchat.android") {
         "Today", "Yesterday",
         "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday",
     )
+}
+
+/**
+ * Instagram: "Seen" receipts and the message-box hint are the main chrome.
+ * Reaction labels are exact-matched. Suggested quick-reply chips are
+ * deliberately NOT filtered — they look identical to short real messages,
+ * so the user deletes the odd stray row instead of us risking real text.
+ */
+class InstagramParser : ChatParser("com.instagram.android") {
+    override val skipTextSubstrings = super.skipTextSubstrings + listOf(
+        "Send message", "Message...", "Active ",
+    )
+    override val skipExactTexts = setOf("Seen", "Liked")
+}
+
+/**
+ * WhatsApp: message bubbles glue the timestamp into the same text node
+ * ("Hello\n10:30 pm"), so timestamps are stripped per line after parsing.
+ * Encryption notices, unread dividers, presence lines and caps date headers
+ * are filtered. Voice notes and quoted blocks have no separable text — the
+ * reply generator sees them as plain lines, same as everywhere else.
+ */
+class WhatsAppParser : ChatParser("com.whatsapp") {
+    override val skipTextSubstrings = super.skipTextSubstrings + listOf(
+        "end-to-end encrypted", "last seen", "UNREAD MESSAGE",
+    )
+    override val skipExactTexts = setOf(
+        "online", "typing...", "typing…", "Message", "TODAY", "YESTERDAY",
+    )
+    override val skipPatterns = listOf(
+        Regex("""\d{1,2}[/-]\d{1,2}[/-]\d{2,4}"""), // locale date headers: 12/09/26
+    )
+
+    private val timeTail = Regex("""\s*\d{1,2}:\d{2}(\s?[AaPp][Mm])?\s*$""")
+
+    override fun parse(root: AccessibilityNodeInfo?): String {
+        return super.parse(root)
+            .lineSequence()
+            .map { it.replace(timeTail, "") }
+            .filter { it.isNotBlank() }
+            .joinToString("\n")
+    }
 }
