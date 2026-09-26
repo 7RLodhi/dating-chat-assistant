@@ -56,17 +56,18 @@ Build → Build APK(s). APK lands in `app/build/outputs/apk/debug/`.
 
 **Option B — command line:**
 ```powershell
-$env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"
-C:\path\to\gradle-8.10.2\bin\gradle.bat assembleDebug
-# APK: app\build\outputs\apk\debug\app-debug.apk
+$env:JAVA_HOME = "C:\Users\aarog\AppData\Local\Temp\opencode\jdk\jdk-21.0.12.1+1"
+C:\Users\aarog\AppData\Local\Temp\opencode\gradle\gradle-8.10.2\bin\gradle.bat renameDebugApk
+# APK: app\build\outputs\apk\debug\app-debug-<versionName>.apk (e.g. app-debug-0.5.0.apk)
+# (renameDebugApk runs assembleDebug first, then stamps the version into the file name)
 ```
 (`local.properties` already points at this machine's SDK. AGP 8.5.2 needs
 Gradle 8.7+ and JDK 17+.)
 
 ## Install on your phone
 
-1. Copy `app-debug.apk` to the phone (USB / Drive / WhatsApp-to-self) and tap
-   it, **or** with USB debugging on: `adb install app-debug.apk`
+1. Copy `app-debug-<version>.apk` to the phone (USB / Drive / WhatsApp-to-self) and tap
+   it, **or** with USB debugging on: `adb install app-debug-<version>.apk`
    (`adb` lives in `%LOCALAPPDATA%\Android\Sdk\platform-tools\`).
 2. Allow "Install unknown apps" when prompted (debug builds only; no Play
    Store needed for personal testing).
