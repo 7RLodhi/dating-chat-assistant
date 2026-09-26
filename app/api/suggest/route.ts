@@ -51,17 +51,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid language." }, { status: 400 });
   }
 
-  const textField = mode === "reply" ? body.conversationText : body.profileText;
+  let textField = mode === "reply" ? body.conversationText : body.profileText;
   if (!textField || !textField.trim()) {
-    return NextResponse.json(
-      {
-        error:
-          mode === "reply"
-            ? "conversationText is required for mode 'reply'."
-            : "profileText is required for mode 'opener' (can be a short description if no bio text is available).",
-      },
-      { status: 400 }
-    );
+    // Empty-window openers (e.g. overlay with only your greeting captured):
+    // synthesize context instead of failing, so clients always get opening
+    // lines + name puns. The opener prompt already handles sparse profiles.
+    if (mode === "opener") {
+      textField = matchName?.trim()
+        ? `(No bio provided — the only thing known is their name: ${matchName.trim()})`
+        : "(No profile info provided — write general opening lines)";
+    } else {
+      return NextResponse.json(
+        { error: "conversationText is required for mode 'reply'." },
+        { status: 400 }
+      );
+    }
   }
   if (textField.length > MAX_INPUT_CHARS) {
     return NextResponse.json(
@@ -172,6 +176,19 @@ export async function POST(req: NextRequest) {
           ? s.tone.toLowerCase()
           : fallbackTone,
     }));
+
+    // The model sometimes emits the same line twice word-for-word. Drop
+    // exact duplicates (case-insensitive, keep first) — a repeated
+    // suggestion is never useful, whatever the tone.
+    {
+      const seen = new Set<string>();
+      result.suggestions = result.suggestions.filter((s) => {
+        const key = s.text.trim().toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    }
 
     const id = randomUUID();
 

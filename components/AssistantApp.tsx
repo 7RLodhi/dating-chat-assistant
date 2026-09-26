@@ -88,10 +88,13 @@ export default function AssistantApp() {
   const { isAndroid, isInstalled, promptInstall } = usePwaInstall();
 
   const activeMatch = matches.find((m) => m.id === activeMatchId) ?? null;
-  // No conversation yet -> opener mode (using their bio). Once there's an
-  // actual back-and-forth pasted in, switch to reply mode automatically —
-  // this replaces the old manual mode tabs.
-  const effectiveMode: Mode = conversationText.trim() ? "reply" : "opener";
+  // Opener mode until the MATCH has actually said something substantive —
+  // your own lone greeting ("Hii" with no reply yet) is an empty window and
+  // gets opening lines, not replies to nothing.
+  const hasMatchContent = conversationRows.some(
+    (r) => r.speaker === "MATCH" && r.text.trim().length > 0
+  );
+  const effectiveMode: Mode = hasMatchContent ? "reply" : "opener";
 
   useEffect(() => {
     setUsageToday(getUsageToday());
@@ -230,7 +233,9 @@ export default function AssistantApp() {
   // Openers can work from the name alone when no bio was given, so the
   // button stays usable for name-only matches instead of silently disabling.
   const inputText =
-    effectiveMode === "reply" ? conversationText : bio || activeMatch?.name || "";
+    effectiveMode === "reply"
+      ? conversationText
+      : bio || conversationText || activeMatch?.name || "";
   const canSubmit = Boolean(activeMatch) && inputText.trim().length > 0 && !loading;
 
   async function runGenerate(params: {
@@ -238,6 +243,7 @@ export default function AssistantApp() {
     conversationText?: string;
     profileText?: string;
     matchName?: string;
+    extraContext?: string;
   }) {
     // Name-only openers: the API needs non-empty profile text, and the
     // opener prompt already handles sparse profiles gracefully.
@@ -272,7 +278,7 @@ export default function AssistantApp() {
           conversationText: params.mode === "reply" ? params.conversationText : undefined,
           profileText: params.mode === "opener" ? params.profileText : undefined,
           matchName: params.mode === "opener" ? params.matchName : undefined,
-          extraContext,
+          extraContext: params.extraContext ?? extraContext,
           tone: requestTone,
           goal,
           language,
@@ -336,11 +342,19 @@ export default function AssistantApp() {
   }
 
   function handleGenerateClick() {
+    // Opener with only your own messages pasted and no bio: the server
+    // synthesizes profile context, but pass your greeting along so openers
+    // don't repeat a "hey" you already sent.
+    const openerOwnMessages =
+      effectiveMode === "opener" && !bio.trim() && conversationText.trim()
+        ? `\n(You already opened with: ${conversationText.trim()} — do not suggest sending another greeting, build on it or try a fresh angle.)`
+        : "";
     runGenerate({
       mode: effectiveMode,
       conversationText,
       profileText: bio,
       matchName: activeMatch?.name,
+      extraContext: extraContext + openerOwnMessages,
     });
     if (activeMatchId) {
       refreshFacts(activeMatchId, bio, conversationText);

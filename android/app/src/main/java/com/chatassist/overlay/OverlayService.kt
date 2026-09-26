@@ -358,7 +358,19 @@ class OverlayService : Service() {
         initializing = false
     }
 
+    // Guards overlapping requests (double-tapped Refresh rendered the same
+    // batch twice). Reset on every callback path below.
+    private var loadingSuggestions = false
+
+    /** True when the match has said anything substantive (not just labels). */
+    private fun hasMatchContent(text: String): Boolean =
+        text.lineSequence().any { line ->
+            line.trimStart().startsWith("[MATCH]", ignoreCase = true) &&
+                line.substringAfter("]:", "").isNotBlank()
+        }
+
     private fun loadSuggestions() {
+        if (loadingSuggestions) return
         val panelView = panel ?: return
         val chatLabel = panelView.findViewById<TextView>(R.id.chatLabel)
         val moodText = panelView.findViewById<TextView>(R.id.moodText)
@@ -371,16 +383,39 @@ class OverlayService : Service() {
             moodText.text = "No chat text captured yet — open a conversation in a supported dating app."
             return
         }
+        // Empty window (only your messages so far, match hasn't replied):
+        // show opening lines + name puns instead of replies to nothing.
+        val opener = !hasMatchContent(text)
         chatLabel.text = ChatBus.labelFor(key, snapshot!!)
-        moodText.text = "Thinking…"
+        moodText.text = if (opener) "Thinking of openers…" else "Thinking…"
         list.removeAllViews()
-        ApiClient.fetchSuggestions(
-            Prefs.backendUrl(this),
-            text,
-            Prefs.tone(this),
-        ) { result ->
-            result.fold(
-                onSuccess = { r ->
+        loadingSuggestions = true
+        val tone = Prefs.tone(this)
+        if (opener) {
+            ApiClient.fetchSuggestions(
+                Prefs.backendUrl(this),
+                "", tone,
+                mode = "opener",
+                matchName = snapshot.title.orEmpty(),
+                callback = { result -> onSuggestionsLoaded(result, moodText, list) },
+            )
+        } else {
+            ApiClient.fetchSuggestions(
+                Prefs.backendUrl(this),
+                text, tone,
+                callback = { result -> onSuggestionsLoaded(result, moodText, list) },
+            )
+        }
+    }
+
+    private fun onSuggestionsLoaded(
+        result: Result<SuggestionResult>,
+        moodText: TextView,
+        list: LinearLayout,
+    ) {
+        loadingSuggestions = false
+        result.fold(
+            onSuccess = { r ->
                     moodText.text = r.mood.ifBlank { "Suggestions ready — tap one to copy." }
                     for (s in r.suggestions.take(5)) {
                         val card = TextView(this).apply {
@@ -420,7 +455,6 @@ class OverlayService : Service() {
                 },
             )
         }
-    }
 
     private fun copyToClipboard(text: String) {
         val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager

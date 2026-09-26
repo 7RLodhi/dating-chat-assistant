@@ -27,16 +27,21 @@ object ApiClient {
         backendUrl: String,
         conversationText: String,
         tone: String,
+        mode: String = "reply",
+        profileText: String = "",
+        matchName: String = "",
         callback: (Result<SuggestionResult>) -> Unit,
     ) {
         Thread {
             try {
                 val body = JSONObject()
-                    .put("mode", "reply")
+                    .put("mode", mode)
                     .put("conversationText", conversationText)
                     .put("tone", tone)
                     .put("goal", "keep_it_light")
                     .put("language", "auto")
+                    .put("profileText", profileText)
+                    .put("matchName", matchName)
                     .toString()
 
                 val conn = (URL(backendUrl).openConnection() as HttpURLConnection).apply {

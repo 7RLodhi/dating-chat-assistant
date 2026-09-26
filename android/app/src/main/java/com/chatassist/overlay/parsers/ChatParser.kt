@@ -27,8 +27,7 @@ open class ChatParser(val appPackage: String) {
 
     open fun parse(root: AccessibilityNodeInfo?): String {
         if (root == null) return ""
-        val bubbles = mutableListOf<Bubble>()
-        collectBubbles(root, bubbles)
+        val bubbles = collectLeaves(root).toMutableList()
         if (bubbles.isEmpty()) return ""
         // Reading order: top to bottom.
         bubbles.sortBy { it.top }
@@ -41,9 +40,24 @@ open class ChatParser(val appPackage: String) {
         }
     }
 
-    private fun collectBubbles(node: AccessibilityNodeInfo, out: MutableList<Bubble>) {
+    /** Raw leaf texts with geometry, unfiltered — subclasses needing label
+     * context (e.g. sender tags) walk this and filter themselves. */
+    protected fun collectRawLeaves(root: AccessibilityNodeInfo): List<Bubble> {
+        val out = mutableListOf<Bubble>()
+        collectRaw(root, out)
+        return out
+    }
+
+    /** Leaf texts minus UI chrome, unsorted. */
+    protected fun collectLeaves(root: AccessibilityNodeInfo): List<Bubble> {
+        val out = mutableListOf<Bubble>()
+        collectRaw(root, out)
+        return out.filterNot { isChrome(it.text) }
+    }
+
+    private fun collectRaw(node: AccessibilityNodeInfo, out: MutableList<Bubble>) {
         val text = node.text?.toString()?.trim().orEmpty()
-        if (text.isNotEmpty() && node.childCount == 0 && !isChrome(text)) {
+        if (text.isNotEmpty() && node.childCount == 0) {
             val bounds = Rect()
             node.getBoundsInScreen(bounds)
             if (bounds.width() > 0 && bounds.height() > 0) {
@@ -51,7 +65,7 @@ open class ChatParser(val appPackage: String) {
             }
         }
         for (i in 0 until node.childCount) {
-            node.getChild(i)?.let { collectBubbles(it, out) }
+            node.getChild(i)?.let { collectRaw(it, out) }
         }
     }
 
@@ -76,7 +90,7 @@ open class ChatParser(val appPackage: String) {
      */
     protected open val skipPatterns: List<Regex> = emptyList()
 
-    private fun isChrome(text: String): Boolean {
+    protected fun isChrome(text: String): Boolean {
         if (text.length > 500) return true // bios / T&Cs walls, not chat
         if (skipExactTexts.any { it.equals(text, ignoreCase = true) }) return true
         if (skipExactCaseSensitive.any { it == text }) return true
@@ -158,11 +172,14 @@ class BumbleParser : ChatParser("com.bumble.app") {
 }
 
 /**
- * Snapchat: delivery statuses ("Delivered", "Opened"…) and date headers sit
- * as text under messages, so they are exact-matched (a real message merely
- * containing those words must survive). Multi-word CTAs are substring-safe.
- * Note: snaps/voice notes carry no text — only typed chat is captured, and
- * view-once messages are read only while visible on screen.
+ * Snapchat lays chat out as a SINGLE column with sender labels ("ME" above
+ * your messages, the contact's display name above theirs) — there are no
+ * left/right bubbles, so position-based attribution (correct on every other
+ * app) mislabels the whole conversation here. This parser attributes by
+ * label instead: "ME" means you, a line matching the header's contact name
+ * means the match. Delivery statuses and date headers are filtered as
+ * before. Note: snaps/voice notes carry no text — only typed chat is
+ * captured, and view-once messages are read only while visible on screen.
  */
 class SnapchatParser : ChatParser("com.snapchat.android") {
     override val skipTextSubstrings = super.skipTextSubstrings + listOf(
@@ -174,38 +191,65 @@ class SnapchatParser : ChatParser("com.snapchat.android") {
         "Today", "Yesterday",
         "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday",
     )
-    // Snapchat stamps its own "ME" tag above your bubbles; the contact's
-    // display-name tag can't be matched generically (documented limitation).
-    override val skipExactCaseSensitive = setOf("ME")
+    // "ME" is consumed as a speaker label by parse() below (never emitted),
+    // so it stays out of the generic skip set on purpose.
+    override val skipExactCaseSensitive: Set<String> = emptySet()
 
     /**
-     * Quoted replies ("SONAM THAKUR 21:20" header + quoted text inside your
-     * bubble): drop the header and re-attribute the quoted line to the OTHER
-     * speaker, mirroring the screenshot-OCR rule. Without this, your reply
-     * ("Software developer") and their quoted question merge into one side
-     * and suggestions end up asking about YOUR facts.
+     * Quoted replies ("SONAM THAKUR 21:20" header + quoted text): drop the
+     * header and re-attribute the quoted line to the OTHER speaker, mirroring
+     * the screenshot-OCR rule. Without this, your reply ("Software
+     * developer") and their quoted question merge into one side and
+     * suggestions end up asking about YOUR facts.
      */
     private val quoteHeader = Regex("""^[A-Z][A-Z .]{1,30}\s+\d{1,2}:\d{2}$""")
 
     override fun parse(root: AccessibilityNodeInfo?): String {
+        if (root == null) return ""
+        // Contact-name label candidates: the header name, plus its first
+        // token ("Rakshaarya" for "Rakshaarya Arya"). Only trustworthy names
+        // qualify — a too-short/too-generic title is ignored rather than
+        // risk eating real messages.
+        val title = extractTitle(root)?.trim().orEmpty()
+        val titleTokens = title.split(Regex("\\s+")).filter { it.length >= 2 }
+        val isLabelName = { text: String ->
+            text.equals(title, ignoreCase = true) ||
+                titleTokens.any { tok -> text.equals(tok, ignoreCase = true) }
+        }
+        val useLabels = title.contains(" ") || title.length >= 4
+
+        val rows = mutableListOf<Pair<String, String>>()
+        var speaker: String? = null
+        for (b in collectRawLeaves(root).sortedBy { it.top }) {
+            val text = b.text
+            if (text == "ME") {
+                speaker = "USER"
+                continue
+            }
+            if (useLabels && isLabelName(text)) {
+                speaker = "MATCH"
+                continue
+            }
+            if (isChrome(text)) continue
+            rows.add((speaker ?: "MATCH") to text)
+        }
+
         val out = mutableListOf<String>()
         var flipNext = false
-        for (line in super.parse(root).split("\n")) {
-            val body = line.substringAfter("]:", line).trim()
-            if (body.isEmpty()) continue
-            if (quoteHeader.matches(body)) {
+        for ((sp, text) in rows) {
+            if (quoteHeader.matches(text)) {
                 flipNext = true
                 continue
             }
             if (flipNext) {
                 flipNext = false
-                val speaker = if (line.startsWith("[USER]")) "MATCH" else "USER"
-                out.add("[$speaker]: (quoted) $body")
+                val other = if (sp == "USER") "MATCH" else "USER"
+                out.add("[$other]: (quoted) $text")
             } else {
-                out.add(line)
+                out.add("[$sp]: $text")
             }
         }
-        return out.joinToString("\n")
+        return out.takeLast(maxMessages).joinToString("\n") { it }
     }
 }
 
