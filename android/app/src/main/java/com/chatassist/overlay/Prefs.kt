@@ -82,6 +82,23 @@ object Prefs {
             .putInt(KEY_PANEL_ALPHA, pct.coerceIn(20, 80)).apply()
     }
 
+    // Panel size in dp. 0/0 = automatic (320dp wide, 60% of screen height).
+    private const val KEY_PANEL_WIDTH = "panel_width_dp"
+    private const val KEY_PANEL_HEIGHT = "panel_height_dp"
+
+    fun panelWidthDp(ctx: Context): Int =
+        ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE).getInt(KEY_PANEL_WIDTH, 0)
+
+    fun panelHeightDp(ctx: Context): Int =
+        ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE).getInt(KEY_PANEL_HEIGHT, 0)
+
+    fun setPanelSizeDp(ctx: Context, widthDp: Int, heightDp: Int) {
+        ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+            .putInt(KEY_PANEL_WIDTH, widthDp.coerceIn(220, 2000))
+            .putInt(KEY_PANEL_HEIGHT, heightDp.coerceIn(160, 2000))
+            .apply()
+    }
+
     fun setCustomIconUri(ctx: Context, uri: String) {
         ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
             .putString(KEY_CUSTOM_ICON_URI, uri).apply()

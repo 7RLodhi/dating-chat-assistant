@@ -81,7 +81,9 @@ Gradle 8.7+ and JDK 17+.)
    chat → tap bubble → suggestions. Tap a suggestion to copy it, then paste
    it into the chat yourself.
 6. **Move the panel:** drag it by its title bar — it lives in the top 60% of
-   the screen and the suggestion list scrolls inside it.
+   the screen and the suggestion list scrolls inside it. **Resize it:** drag
+   the ◢ grip in the bottom-right corner; the size is remembered for next
+   time (clamped to the screen).
 7. **Steer the vibe:** the tone dropdown inside the panel (Auto/Casual/…/
    Spicy 18+) regenerates suggestions immediately on change.
 8. **Customize** (same screen, Fooview-style): bubble icon (initials / 💬 /

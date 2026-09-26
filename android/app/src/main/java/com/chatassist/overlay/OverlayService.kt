@@ -214,6 +214,50 @@ class OverlayService : Service() {
         }
     }
 
+    /**
+     * Makes the panel resizable by dragging its corner grip. Size is clamped
+     * to the screen and persisted on release, so reopening restores it.
+     */
+    @SuppressLint("ClickableViewAccessibility")
+    private fun makeResizable(handle: View, params: WindowManager.LayoutParams) {
+        val density = resources.displayMetrics.density
+        val metrics = resources.displayMetrics
+        val minW = (220 * density).roundToInt()
+        val minH = (160 * density).roundToInt()
+        var downX = 0
+        var downY = 0
+        var startW = 0
+        var startH = 0
+        handle.setOnTouchListener { _, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    downX = event.rawX.toInt()
+                    downY = event.rawY.toInt()
+                    startW = if (params.width > 0) params.width else handle.rootView.width
+                    startH = if (params.height > 0) params.height else handle.rootView.height
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    params.width = (startW + (event.rawX.toInt() - downX))
+                        .coerceIn(minW, metrics.widthPixels)
+                    params.height = (startH + (event.rawY.toInt() - downY))
+                        .coerceIn(minH, metrics.heightPixels)
+                    windowManager.updateViewLayout(panel, params)
+                    true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    Prefs.setPanelSizeDp(
+                        this,
+                        (params.width / density).roundToInt(),
+                        (params.height / density).roundToInt(),
+                    )
+                    true
+                }
+                else -> false
+            }
+        }
+    }
+
     private fun togglePanel() {
         if (panel != null) {
             windowManager.removeView(panel)
@@ -230,20 +274,32 @@ class OverlayService : Service() {
             WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
             PixelFormat.TRANSLUCENT,
         ).apply {
-            // Top 60% of the screen only: anchored near the top, capped height
-            // (the inner list scrolls). Still draggable via the header.
+            // Top 60% of the screen by default: anchored near the top, capped
+            // height (the inner list scrolls). A saved manual resize replaces
+            // both dimensions; still draggable via the header either way.
             gravity = Gravity.TOP or Gravity.START
             val bp = bubbleParams
             val density = resources.displayMetrics.density
             x = (bp?.x ?: 0) + 130
             y = (48 * density).roundToInt()
-            height = (resources.displayMetrics.heightPixels * 0.6).toInt()
+            val savedW = Prefs.panelWidthDp(this@OverlayService)
+            val savedH = Prefs.panelHeightDp(this@OverlayService)
+            if (savedW > 0 && savedH > 0) {
+                val metrics = resources.displayMetrics
+                width = (savedW * density).roundToInt()
+                    .coerceIn((220 * density).roundToInt(), metrics.widthPixels)
+                height = (savedH * density).roundToInt()
+                    .coerceIn((160 * density).roundToInt(), metrics.heightPixels)
+            } else {
+                height = (resources.displayMetrics.heightPixels * 0.6).toInt()
+            }
         }
         val panelView = panel!!
         panelView.alpha = Prefs.panelAlphaPct(this) / 100f
         panelView.findViewById<Button>(R.id.btnClose).setOnClickListener { togglePanel() }
         panelView.findViewById<Button>(R.id.btnRefresh).setOnClickListener { loadSuggestions() }
         setupToneSpinner(panelView)
+        makeResizable(panelView.findViewById(R.id.resizeHandle), panelParams!!)
         makeDraggable(panelView.findViewById(R.id.panelHeader), panelParams!!)
         windowManager.addView(panel, panelParams)
         loadSuggestions()
