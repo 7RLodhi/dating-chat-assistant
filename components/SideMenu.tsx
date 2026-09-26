@@ -1,5 +1,8 @@
 "use client";
 
+import { useState } from "react";
+import { usePwaInstall } from "@/lib/pwa";
+
 export type SideMenuItem = "doubleMeaning" | "darkFantasy";
 
 export default function SideMenu({
@@ -11,7 +14,24 @@ export default function SideMenu({
   onClose: () => void;
   onSelect: (item: SideMenuItem) => void;
 }) {
+  const { isAndroid, isInstalled, promptInstall } = usePwaInstall();
+  const [installing, setInstalling] = useState(false);
+  const [showManualHint, setShowManualHint] = useState(false);
+
   if (!open) return null;
+
+  async function handleInstall() {
+    if (isInstalled || installing) return;
+    setInstalling(true);
+    try {
+      const outcome = await promptInstall();
+      // No native prompt available (already handled inside promptInstall):
+      // fall back to manual instructions instead of doing nothing.
+      setShowManualHint(outcome === "unavailable");
+    } finally {
+      setInstalling(false);
+    }
+  }
 
   return (
     <div className="fixed inset-0 z-50" onClick={onClose}>
@@ -55,6 +75,33 @@ export default function SideMenu({
                 18+
               </span>
             </button>
+          </li>
+          <li>
+            {isInstalled ? (
+              <div className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-green-700">
+                <span className="text-lg">✓</span>
+                Lite App Installed
+              </div>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={handleInstall}
+                  disabled={installing}
+                  className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-gray-800 hover:bg-gray-100 disabled:opacity-60"
+                >
+                  <span className="text-lg">📲</span>
+                  {installing ? "Installing…" : "Install Lite App"}
+                </button>
+                {showManualHint && (
+                  <p className="px-3 pt-1 text-[11px] text-gray-500">
+                    {isAndroid
+                      ? "Tap Chrome's ⋮ menu → “Add to Home screen” to install."
+                      : "Open this page in Chrome on your Android phone, then use ⋮ → “Add to Home screen”."}
+                  </p>
+                )}
+              </>
+            )}
           </li>
         </ul>
       </nav>
