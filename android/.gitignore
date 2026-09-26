@@ -1,0 +1,10 @@
+# Android Studio / Gradle ignores (applies to android/ subtree).
+.gradle/
+build/
+local.properties
+*.iml
+.idea/
+captures/
+.externalNativeBuild/
+.cxx/
+*.hprof

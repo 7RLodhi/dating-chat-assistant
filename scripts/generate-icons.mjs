@@ -140,3 +140,11 @@ writePng(join(outDir, "icon-512.png"), 512, 512, drawIcon(512, 0.78));
 writePng(join(outDir, "maskable-512.png"), 512, 512, drawIcon(512, 0.62));
 writePng(join(outDir, "apple-touch-icon.png"), 180, 180, drawIcon(180, 0.78));
 writePng(join(outDir, "favicon-32.png"), 32, 32, drawIcon(32, 0.78));
+
+// Android launcher mipmaps (same brand art) for webapp/android.
+const densities = { mdpi: 48, hdpi: 72, xhdpi: 96, xxhdpi: 144, xxxhdpi: 192 };
+for (const [density, size] of Object.entries(densities)) {
+  const dir = join(root, "android", "app", "src", "main", "res", `mipmap-${density}`);
+  mkdirSync(dir, { recursive: true });
+  writePng(join(dir, "ic_launcher.png"), size, size, drawIcon(size, 0.78));
+}
