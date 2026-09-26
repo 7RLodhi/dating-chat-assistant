@@ -251,6 +251,7 @@ const CONVERSATION_TRANSCRIBE_INSTRUCTION = `This image is a screenshot of a dat
 Rules:
 - Preserve message order top to bottom.
 - Ignore UI chrome: timestamps, status bar, "typing...", read receipts, keyboard, buttons.
+- Skip standalone sender labels: small name tags like "ME" or a display name sitting alone above a message bubble are app chrome, not messages — never transcribe them as lines.
 - If a message is split across multiple bubbles, keep them as separate lines.
 - Quoted replies: if a bubble contains a quoted/replied-to message (usually smaller or dimmer text above the main message, sometimes with a reply indicator or vertical bar), split it into its own line. In a 1:1 chat the quote is virtually always the OTHER person's words, so label it with the opposite speaker of the enclosing bubble and prefix it with "(quoted) ". Example: your right-side bubble quoting the match becomes two lines: "[MATCH]: (quoted) original words here" followed by "[USER]: your reply here".
 - If you can't confidently read a word, make your best guess rather than omitting it.

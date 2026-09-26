@@ -79,6 +79,10 @@ Gradle 8.7+ and JDK 17+.)
 5. Tap **Start bubble**, open Tinder/Hinge/Bumble → bubble appears → open a
    chat → tap bubble → suggestions. Tap a suggestion to copy it, then paste
    it into the chat yourself.
+6. **Move the panel:** drag it by its title bar — it stays where you drop it.
+7. **Customize the bubble** (same screen, Fooview-style): pick initials / 💬 /
+   minimal dot / your own gallery image, drag the size (40–96 dp) and
+   transparency (20–100%) sliders, then tap **Start bubble** again to apply.
 
 ## Tuning per-app parsers
 

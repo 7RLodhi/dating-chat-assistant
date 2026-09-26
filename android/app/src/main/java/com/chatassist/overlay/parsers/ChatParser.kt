@@ -63,6 +63,13 @@ open class ChatParser(val appPackage: String) {
     protected open val skipExactTexts: Set<String> = emptySet()
 
     /**
+     * Same as [skipExactTexts] but case-SENSITIVE, for labels like Snapchat's
+     * all-caps "ME" self-tag (a real message reading exactly "ME" is near
+     * nonexistent, while lowercase "me" as a reply must survive).
+     */
+    protected open val skipExactCaseSensitive: Set<String> = emptySet()
+
+    /**
      * Full-text patterns for chrome like locale date headers ("12/09/26").
      * Anchored patterns only — never unanchored, which would swallow real
      * messages.
@@ -72,6 +79,7 @@ open class ChatParser(val appPackage: String) {
     private fun isChrome(text: String): Boolean {
         if (text.length > 500) return true // bios / T&Cs walls, not chat
         if (skipExactTexts.any { it.equals(text, ignoreCase = true) }) return true
+        if (skipExactCaseSensitive.any { it == text }) return true
         if (skipPatterns.any { it.matches(text) }) return true
         return skipTextSubstrings.any { text.contains(it, ignoreCase = true) }
     }
@@ -132,6 +140,9 @@ class SnapchatParser : ChatParser("com.snapchat.android") {
         "Today", "Yesterday",
         "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday",
     )
+    // Snapchat stamps its own "ME" tag above your bubbles; the contact's
+    // display-name tag can't be matched generically (documented limitation).
+    override val skipExactCaseSensitive = setOf("ME")
 }
 
 /**

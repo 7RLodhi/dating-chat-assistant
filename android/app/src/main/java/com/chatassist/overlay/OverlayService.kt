@@ -14,11 +14,16 @@ import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
+import android.graphics.Outline
+import android.net.Uri
+import android.view.ViewOutlineProvider
 import android.widget.Button
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
+import kotlin.math.roundToInt
 
 /**
  * Foreground service hosting the floating bubble + suggestion panel.
@@ -116,7 +121,94 @@ class OverlayService : Service() {
                 else -> false
             }
         }
+        applyBubbleAppearance()
         windowManager.addView(bubble, bubbleParams)
+    }
+
+    /**
+     * Applies the Fooview-style bubble settings (icon, size, transparency)
+     * from [Prefs]. Called whenever the bubble is (re)created — the Start
+     * button restarts the service so edits always take effect.
+     */
+    private fun applyBubbleAppearance() {
+        val view = bubble ?: return
+        val params = bubbleParams ?: return
+
+        val sizePx = (Prefs.bubbleSizeDp(this) * resources.displayMetrics.density).roundToInt()
+        params.width = sizePx
+        params.height = sizePx
+        view.alpha = Prefs.transparencyPct(this) / 100f
+
+        val label = view.findViewById<TextView>(R.id.bubbleText)
+        val image = view.findViewById<ImageView>(R.id.bubbleImage)
+        when (Prefs.iconStyle(this)) {
+            "chat" -> {
+                label.visibility = View.VISIBLE
+                label.text = "💬"
+                image.visibility = View.GONE
+            }
+            "dot" -> {
+                label.visibility = View.GONE
+                image.visibility = View.GONE
+            }
+            "custom" -> {
+                val uri = Prefs.customIconUri(this)
+                val loaded = uri.isNotBlank() && runCatching {
+                    image.setImageURI(Uri.parse(uri))
+                    true
+                }.getOrDefault(false)
+                if (loaded) {
+                    // Circular crop with zero dependencies.
+                    image.outlineProvider = object : ViewOutlineProvider() {
+                        override fun getOutline(v: View, outline: Outline) {
+                            outline.setOval(0, 0, v.width, v.height)
+                        }
+                    }
+                    image.clipToOutline = true
+                    label.visibility = View.GONE
+                    image.visibility = View.VISIBLE
+                } else {
+                    label.visibility = View.VISIBLE
+                    label.text = "CA"
+                    image.visibility = View.GONE
+                }
+            }
+            else -> { // "initials"
+                label.visibility = View.VISIBLE
+                label.text = "CA"
+                image.visibility = View.GONE
+            }
+        }
+    }
+
+    /**
+     * Makes a view drag its window around by touch (used by the panel
+     * header). Same tap-vs-drag threshold pattern as the bubble itself.
+     */
+    @SuppressLint("ClickableViewAccessibility")
+    private fun makeDraggable(handle: View, params: WindowManager.LayoutParams) {
+        var downX = 0
+        var downY = 0
+        var startX = 0
+        var startY = 0
+        handle.setOnTouchListener { _, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    downX = event.rawX.toInt()
+                    downY = event.rawY.toInt()
+                    startX = params.x
+                    startY = params.y
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    params.x = startX + (event.rawX.toInt() - downX)
+                    params.y = startY + (event.rawY.toInt() - downY)
+                    windowManager.updateViewLayout(panel, params)
+                    true
+                }
+                else -> false
+            }
+        }
     }
 
     private fun togglePanel() {
@@ -142,6 +234,7 @@ class OverlayService : Service() {
         }
         panel!!.findViewById<Button>(R.id.btnClose).setOnClickListener { togglePanel() }
         panel!!.findViewById<Button>(R.id.btnRefresh).setOnClickListener { loadSuggestions() }
+        makeDraggable(panel!!.findViewById(R.id.panelHeader), panelParams!!)
         windowManager.addView(panel, panelParams)
         loadSuggestions()
     }

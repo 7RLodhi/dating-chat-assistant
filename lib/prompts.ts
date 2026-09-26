@@ -187,7 +187,9 @@ ${buildStyleSection(styleExamples)}
 ${buildTasteSection(tasteProfile)}
 Additional context from user (optional, may be empty): "${extraContext ?? ""}"
 
-Generate 5 distinct reply options that [USER] could send next. Vary the approach (e.g., a question, a playful callback, a direct statement, a joke) — do not make all 5 minor rewordings of each other. At least one should be a question that invites a real answer (not yes/no) where appropriate.
+Generate 5 distinct reply options that [USER] could send next. Vary the approach (e.g., a question, a playful callback, a direct statement, a joke) — do not make all 5 minor rewordings of each other. At most 2-3 may end in a question; the rest should be statements, reactions, or answers.
+
+IMPORTANT — answer before you ask: if the match's last message asks a question, every suggestion must first answer or directly address what they asked before adding anything new. Ignoring their question to ask an unrelated one of your own is the worst possible outcome. Treat standalone label-like lines (e.g. "ME", or a display name sitting alone) as UI leftovers, not messages — never reply to them.
 
 Return JSON matching this schema:
 {

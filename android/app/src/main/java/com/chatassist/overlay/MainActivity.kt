@@ -11,7 +11,11 @@ import android.provider.Settings
 import android.text.TextUtils
 import android.widget.Button
 import android.widget.EditText
+import android.widget.RadioButton
+import android.widget.RadioGroup
+import android.widget.SeekBar
 import android.widget.TextView
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 
@@ -30,6 +34,25 @@ class MainActivity : AppCompatActivity() {
     private lateinit var statusA11y: TextView
     private lateinit var inputBackendUrl: EditText
     private lateinit var testResult: TextView
+    private lateinit var iconGroup: RadioGroup
+    private lateinit var sizeSeek: SeekBar
+    private lateinit var sizeValue: TextView
+    private lateinit var alphaSeek: SeekBar
+    private lateinit var alphaValue: TextView
+
+    private val pickImage = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri == null) return@registerForActivityResult
+        try {
+            contentResolver.takePersistableUriPermission(
+                uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
+        } catch (_: Exception) {
+            // Persist not granted — the URI still works for this session.
+        }
+        Prefs.setCustomIconUri(this, uri.toString())
+        Prefs.setIconStyle(this, "custom")
+        iconGroup.check(R.id.radioCustom)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -39,8 +62,46 @@ class MainActivity : AppCompatActivity() {
         statusA11y = findViewById(R.id.statusA11y)
         inputBackendUrl = findViewById(R.id.inputBackendUrl)
         testResult = findViewById(R.id.testResult)
+        iconGroup = findViewById(R.id.iconGroup)
+        sizeSeek = findViewById(R.id.sizeSeek)
+        sizeValue = findViewById(R.id.sizeValue)
+        alphaSeek = findViewById(R.id.alphaSeek)
+        alphaValue = findViewById(R.id.alphaValue)
 
         inputBackendUrl.setText(Prefs.backendUrl(this))
+        syncAppearanceUi()
+
+        iconGroup.setOnCheckedChangeListener { _, checkedId ->
+            when (checkedId) {
+                R.id.radioInitials -> Prefs.setIconStyle(this, "initials")
+                R.id.radioChat -> Prefs.setIconStyle(this, "chat")
+                R.id.radioDot -> Prefs.setIconStyle(this, "dot")
+                R.id.radioCustom -> {
+                    // Only switch when an image is already chosen; otherwise
+                    // open the picker (its callback sets the style on success).
+                    if (Prefs.customIconUri(this).isBlank()) pickImage.launch("image/*")
+                    else Prefs.setIconStyle(this, "custom")
+                }
+            }
+        }
+        sizeSeek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seek: SeekBar, progress: Int, fromUser: Boolean) {
+                if (!fromUser) return
+                Prefs.setBubbleSizeDp(this@MainActivity, progress)
+                sizeValue.text = "${Prefs.bubbleSizeDp(this@MainActivity)} dp"
+            }
+            override fun onStartTrackingTouch(seek: SeekBar) {}
+            override fun onStopTrackingTouch(seek: SeekBar) {}
+        })
+        alphaSeek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seek: SeekBar, progress: Int, fromUser: Boolean) {
+                if (!fromUser) return
+                Prefs.setTransparencyPct(this@MainActivity, progress)
+                alphaValue.text = "${Prefs.transparencyPct(this@MainActivity)}%"
+            }
+            override fun onStartTrackingTouch(seek: SeekBar) {}
+            override fun onStopTrackingTouch(seek: SeekBar) {}
+        })
 
         findViewById<Button>(R.id.btnOverlay).setOnClickListener {
             startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
@@ -51,6 +112,9 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btnStart).setOnClickListener {
             Prefs.setBackendUrl(this, inputBackendUrl.text.toString())
             requestNotificationPermissionIfNeeded()
+            // Restart (not just start) so bubble appearance edits below
+            // always take effect on the running bubble.
+            stopService(Intent(this, OverlayService::class.java))
             startForegroundServiceCompat()
         }
         findViewById<Button>(R.id.btnTest).setOnClickListener {
@@ -72,6 +136,25 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         refreshStatus()
+        syncAppearanceUi()
+    }
+
+    /** Reflects saved bubble settings in the radio group + sliders. */
+    private fun syncAppearanceUi() {
+        when (Prefs.iconStyle(this)) {
+            "chat" -> iconGroup.check(R.id.radioChat)
+            "dot" -> iconGroup.check(R.id.radioDot)
+            "custom" -> iconGroup.check(R.id.radioCustom)
+            else -> iconGroup.check(R.id.radioInitials)
+        }
+        sizeSeek.max = 96
+        sizeSeek.min = 40
+        sizeSeek.progress = Prefs.bubbleSizeDp(this)
+        sizeValue.text = "${Prefs.bubbleSizeDp(this)} dp"
+        alphaSeek.max = 100
+        alphaSeek.min = 20
+        alphaSeek.progress = Prefs.transparencyPct(this)
+        alphaValue.text = "${Prefs.transparencyPct(this)}%"
     }
 
     private fun refreshStatus() {
