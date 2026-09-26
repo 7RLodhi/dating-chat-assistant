@@ -31,12 +31,12 @@ android/
     build.gradle.kts          # applicationId com.chatassist.overlay, minSdk 29
     src/main/AndroidManifest.xml
     src/main/java/com/chatassist/overlay/
-      MainActivity.kt         # onboarding: 2 permissions + backend URL + test
+      MainActivity.kt         # onboarding: 2 permissions + appearance + test
       OverlayService.kt       # foreground service, bubble + suggestion panel
       ChatReaderService.kt    # accessibility reader (3 whitelisted packages)
       ChatBus.kt              # latest-snapshot bus between reader and overlay
       ApiClient.kt            # zero-dependency client for /api/suggest
-      Prefs.kt                # backend URL + tone settings
+      Prefs.kt                # bubble/panel appearance + tone settings
       parsers/ChatParser.kt   # generic tree-walk + Tinder/Hinge/Bumble tweaks
     src/main/res/...
 ```
@@ -52,13 +52,16 @@ Temurin 21 instead (no admin needed):
 
 **Option A — Android Studio (easiest):** File → Open → select the `android/`
 folder → let Gradle sync (downloads AGP/deps on first run) → Run ▶ or
-Build → Build APK(s). APK lands in `app/build/outputs/apk/debug/`.
+Build → Build APK(s). APK lands in
+`%LOCALAPPDATA%\AndroidBuild\chat-assist-app\outputs\apk\debug\`
+(build outputs are deliberately outside OneDrive — its sync locks files
+mid-build; see `layout.buildDirectory` in `app/build.gradle.kts`).
 
 **Option B — command line:**
 ```powershell
 $env:JAVA_HOME = "C:\Users\aarog\AppData\Local\Temp\opencode\jdk\jdk-21.0.12.1+1"
 C:\Users\aarog\AppData\Local\Temp\opencode\gradle\gradle-8.10.2\bin\gradle.bat renameDebugApk
-# APK: app\build\outputs\apk\debug\app-debug-<versionName>.apk (e.g. app-debug-0.5.0.apk)
+# APK: %LOCALAPPDATA%\AndroidBuild\chat-assist-app\outputs\apk\debug\app-debug-<versionName>.apk
 # (renameDebugApk runs assembleDebug first, then stamps the version into the file name)
 ```
 (`local.properties` already points at this machine's SDK. AGP 8.5.2 needs
@@ -66,8 +69,8 @@ Gradle 8.7+ and JDK 17+.)
 
 ## Install on your phone
 
-1. Copy `app-debug-<version>.apk` to the phone (USB / Drive / WhatsApp-to-self) and tap
-   it, **or** with USB debugging on: `adb install app-debug-<version>.apk`
+1. Copy `app-debug-<version>.apk` (from the build dir above) to the phone (USB / Drive /
+   WhatsApp-to-self) and tap it, **or** with USB debugging on: `adb install app-debug-<version>.apk`
    (`adb` lives in `%LOCALAPPDATA%\Android\Sdk\platform-tools\`).
 2. Allow "Install unknown apps" when prompted (debug builds only; no Play
    Store needed for personal testing).
@@ -115,8 +118,9 @@ the package in `ChatReaderService.SUPPORTED_PACKAGES` **and** in
 `{mode:"reply", conversationText, tone, goal:"keep_it_light", language:"auto"}`
 expects `{suggestions:[{text,tone}], conversation_read:{summary}}` — the same
 contract as the web app's `/api/suggest`, so any improvement there (tones,
-Hinglish, name puns) flows to the overlay for free. Default URL is the
-production web app; override it on the onboarding screen.
+Hinglish, name puns) flows to the overlay for free. The URL is fixed to the
+production web app (a former onboarding override field was removed — a
+typo'd URL silently broke suggestions).
 
 ## Behavior notes
 

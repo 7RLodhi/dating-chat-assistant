@@ -1,6 +1,7 @@
 package com.chatassist.overlay
 
 import android.Manifest
+import android.app.ActivityManager
 import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -10,7 +11,6 @@ import android.os.Bundle
 import android.provider.Settings
 import android.text.TextUtils
 import android.widget.Button
-import android.widget.EditText
 import android.widget.RadioButton
 import android.widget.RadioGroup
 import android.widget.SeekBar
@@ -32,8 +32,9 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var statusOverlay: TextView
     private lateinit var statusA11y: TextView
-    private lateinit var inputBackendUrl: EditText
     private lateinit var testResult: TextView
+    private lateinit var btnStart: Button
+    private lateinit var versionFooter: TextView
     private lateinit var iconGroup: RadioGroup
     private lateinit var sizeSeek: SeekBar
     private lateinit var sizeValue: TextView
@@ -43,7 +44,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var panelAlphaValue: TextView
 
     private val pickImage = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        if (uri == null) return@registerForActivityResult
+        if (uri == null) {
+            syncAppearanceUi() // cancelled: revert the radio to the saved style
+            return@registerForActivityResult
+        }
         try {
             contentResolver.takePersistableUriPermission(
                 uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
@@ -54,6 +58,27 @@ class MainActivity : AppCompatActivity() {
         Prefs.setCustomIconUri(this, uri.toString())
         Prefs.setIconStyle(this, "custom")
         iconGroup.check(R.id.radioCustom)
+        markAppearanceDirty()
+    }
+
+    /** Start is enabled when the bubble isn't running, or after an appearance edit. */
+    private var appearanceDirty = false
+
+    private fun markAppearanceDirty() {
+        appearanceDirty = true
+        updateStartButton()
+    }
+
+    private fun isOverlayRunning(): Boolean {
+        val manager = getSystemService(ACTIVITY_SERVICE) as ActivityManager
+        return manager.getRunningServices(Int.MAX_VALUE)
+            .any { it.service.className == OverlayService::class.java.name }
+    }
+
+    private fun updateStartButton() {
+        if (::btnStart.isInitialized) {
+            btnStart.isEnabled = !isOverlayRunning() || appearanceDirty
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -62,8 +87,9 @@ class MainActivity : AppCompatActivity() {
 
         statusOverlay = findViewById(R.id.statusOverlay)
         statusA11y = findViewById(R.id.statusA11y)
-        inputBackendUrl = findViewById(R.id.inputBackendUrl)
         testResult = findViewById(R.id.testResult)
+        btnStart = findViewById(R.id.btnStart)
+        versionFooter = findViewById(R.id.versionFooter)
         iconGroup = findViewById(R.id.iconGroup)
         sizeSeek = findViewById(R.id.sizeSeek)
         sizeValue = findViewById(R.id.sizeValue)
@@ -72,20 +98,25 @@ class MainActivity : AppCompatActivity() {
         panelAlphaSeek = findViewById(R.id.panelAlphaSeek)
         panelAlphaValue = findViewById(R.id.panelAlphaValue)
 
-        inputBackendUrl.setText(Prefs.backendUrl(this))
+        versionFooter.text = "v${appVersionName()} (${appVersionCode()})"
         syncAppearanceUi()
 
         iconGroup.setOnCheckedChangeListener { _, checkedId ->
-            when (checkedId) {
-                R.id.radioInitials -> Prefs.setIconStyle(this, "initials")
-                R.id.radioChat -> Prefs.setIconStyle(this, "chat")
-                R.id.radioDot -> Prefs.setIconStyle(this, "dot")
-                R.id.radioCustom -> {
-                    // Only switch when an image is already chosen; otherwise
-                    // open the picker (its callback sets the style on success).
-                    if (Prefs.customIconUri(this).isBlank()) pickImage.launch("image/*")
-                    else Prefs.setIconStyle(this, "custom")
-                }
+            // Programmatic checks from syncAppearanceUi must not count as edits.
+            val next = when (checkedId) {
+                R.id.radioChat -> "chat"
+                R.id.radioDot -> "dot"
+                R.id.radioCustom -> "custom"
+                else -> "initials"
+            }
+            if (next == "custom" && Prefs.customIconUri(this).isBlank()) {
+                // No image yet — open the picker (its callback saves + marks dirty).
+                pickImage.launch("image/*")
+                return@setOnCheckedChangeListener
+            }
+            if (Prefs.iconStyle(this) != next) {
+                Prefs.setIconStyle(this, next)
+                markAppearanceDirty()
             }
         }
         sizeSeek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
@@ -93,6 +124,7 @@ class MainActivity : AppCompatActivity() {
                 if (!fromUser) return
                 Prefs.setBubbleSizeDp(this@MainActivity, progress)
                 sizeValue.text = "${Prefs.bubbleSizeDp(this@MainActivity)} dp"
+                markAppearanceDirty()
             }
             override fun onStartTrackingTouch(seek: SeekBar) {}
             override fun onStopTrackingTouch(seek: SeekBar) {}
@@ -102,6 +134,7 @@ class MainActivity : AppCompatActivity() {
                 if (!fromUser) return
                 Prefs.setTransparencyPct(this@MainActivity, progress)
                 alphaValue.text = "${Prefs.transparencyPct(this@MainActivity)}%"
+                markAppearanceDirty()
             }
             override fun onStartTrackingTouch(seek: SeekBar) {}
             override fun onStopTrackingTouch(seek: SeekBar) {}
@@ -111,6 +144,7 @@ class MainActivity : AppCompatActivity() {
                 if (!fromUser) return
                 Prefs.setPanelAlphaPct(this@MainActivity, progress)
                 panelAlphaValue.text = "${Prefs.panelAlphaPct(this@MainActivity)}%"
+                markAppearanceDirty()
             }
             override fun onStartTrackingTouch(seek: SeekBar) {}
             override fun onStopTrackingTouch(seek: SeekBar) {}
@@ -122,16 +156,16 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btnA11y).setOnClickListener {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         }
-        findViewById<Button>(R.id.btnStart).setOnClickListener {
-            Prefs.setBackendUrl(this, inputBackendUrl.text.toString())
+        btnStart.setOnClickListener {
             requestNotificationPermissionIfNeeded()
             // Restart (not just start) so bubble appearance edits below
             // always take effect on the running bubble.
             stopService(Intent(this, OverlayService::class.java))
             startForegroundServiceCompat()
+            appearanceDirty = false
+            updateStartButton()
         }
         findViewById<Button>(R.id.btnTest).setOnClickListener {
-            Prefs.setBackendUrl(this, inputBackendUrl.text.toString())
             testResult.text = "Sending…"
             ApiClient.fetchSuggestions(
                 Prefs.backendUrl(this),
@@ -150,6 +184,33 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         refreshStatus()
         syncAppearanceUi()
+        updateStartButton()
+    }
+
+    private fun appVersionName(): String {
+        return try {
+            val info = if (Build.VERSION.SDK_INT >= 33) {
+                packageManager.getPackageInfo(packageName, PackageManager.PackageInfoFlags.of(0))
+            } else {
+                @Suppress("DEPRECATION") packageManager.getPackageInfo(packageName, 0)
+            }
+            info.versionName ?: "?"
+        } catch (_: Exception) {
+            "?"
+        }
+    }
+
+    private fun appVersionCode(): Long {
+        return try {
+            val info = if (Build.VERSION.SDK_INT >= 33) {
+                packageManager.getPackageInfo(packageName, PackageManager.PackageInfoFlags.of(0))
+            } else {
+                @Suppress("DEPRECATION") packageManager.getPackageInfo(packageName, 0)
+            }
+            if (Build.VERSION.SDK_INT >= 28) info.longVersionCode else @Suppress("DEPRECATION") info.versionCode.toLong()
+        } catch (_: Exception) {
+            0L
+        }
     }
 
     /** Reflects saved bubble settings in the radio group + sliders. */

@@ -59,22 +59,6 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:text="Backend (your suggestion API)"
-            android:textSize="15sp"
-            android:textStyle="bold" />
-
-        <EditText
-            android:id="@+id/inputBackendUrl"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="https://your-backend/api/suggest"
-            android:inputType="textUri"
-            android:textSize="14sp" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
             android:text="Bubble appearance"
             android:textSize="15sp"
             android:textStyle="bold" />
@@ -201,7 +185,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:text="Tap Start bubble again after changing appearance."
+            android:text="Start enables when the bubble isn't running, or after you change appearance above."
             android:textColor="#6B7280"
             android:textSize="13sp" />
 
@@ -226,5 +210,14 @@
             android:layout_marginTop="8dp"
             android:text=""
             android:textSize="14sp" />
+
+        <TextView
+            android:id="@+id/versionFooter"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="24dp"
+            android:textColor="#9CA3AF"
+            android:textSize="12sp" />
     </LinearLayout>
 </ScrollView>

@@ -5,14 +5,16 @@ import android.content.Context
 /** Tiny SharedPreferences wrapper. Backend URL points at your suggestion API. */
 object Prefs {
     private const val FILE = "chat_assist_prefs"
-    private const val KEY_BACKEND_URL = "backend_url"
     private const val KEY_TONE = "tone"
     private const val KEY_ICON_STYLE = "icon_style"
     private const val KEY_BUBBLE_SIZE = "bubble_size_dp"
     private const val KEY_TRANSPARENCY = "transparency_pct"
     private const val KEY_CUSTOM_ICON_URI = "custom_icon_uri"
 
-    const val DEFAULT_BACKEND_URL = "https://dhick-chick-chat.vercel.app/api/suggest"
+    // Fixed production backend. A former onboarding field let testers point
+    // elsewhere, but a typo'd URL silently broke suggestions — one constant,
+    // zero confusion.
+    private const val BACKEND_URL = "https://dhick-chick-chat.vercel.app/api/suggest"
     const val DEFAULT_TONE = "casual"
 
     /** Bubble icon: "initials" (CA), "chat" (💬), "dot" (plain), "custom" (gallery image). */
@@ -20,14 +22,7 @@ object Prefs {
     const val DEFAULT_BUBBLE_SIZE_DP = 56
     const val DEFAULT_TRANSPARENCY_PCT = 100
 
-    fun backendUrl(ctx: Context): String =
-        ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE)
-            .getString(KEY_BACKEND_URL, DEFAULT_BACKEND_URL) ?: DEFAULT_BACKEND_URL
-
-    fun setBackendUrl(ctx: Context, url: String) {
-        ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
-            .putString(KEY_BACKEND_URL, url.trim()).apply()
-    }
+    fun backendUrl(@Suppress("UNUSED_PARAMETER") ctx: Context): String = BACKEND_URL
 
     fun tone(ctx: Context): String =
         ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE)

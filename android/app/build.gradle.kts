@@ -3,6 +3,14 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+// Build outputs live OUTSIDE OneDrive: its sync locks files mid-build and
+// breaks resource merging ("Failed to delete some children"). Sources stay
+// in the repo; only outputs move. APK lands in:
+// %LOCALAPPDATA%\AndroidBuild\chat-assist-app\outputs\apk\debug\
+layout.buildDirectory.set(
+    File(System.getProperty("user.home"), "AppData/Local/AndroidBuild/chat-assist-app")
+)
+
 android {
     namespace = "com.chatassist.overlay"
     compileSdk = 35
@@ -11,8 +19,8 @@ android {
         applicationId = "com.chatassist.overlay"
         minSdk = 29
         targetSdk = 35
-        versionCode = 9
-        versionName = "0.9.0"
+        versionCode = 10
+        versionName = "0.10.0"
     }
 
     buildTypes {
