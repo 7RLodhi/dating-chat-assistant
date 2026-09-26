@@ -177,6 +177,36 @@ class SnapchatParser : ChatParser("com.snapchat.android") {
     // Snapchat stamps its own "ME" tag above your bubbles; the contact's
     // display-name tag can't be matched generically (documented limitation).
     override val skipExactCaseSensitive = setOf("ME")
+
+    /**
+     * Quoted replies ("SONAM THAKUR 21:20" header + quoted text inside your
+     * bubble): drop the header and re-attribute the quoted line to the OTHER
+     * speaker, mirroring the screenshot-OCR rule. Without this, your reply
+     * ("Software developer") and their quoted question merge into one side
+     * and suggestions end up asking about YOUR facts.
+     */
+    private val quoteHeader = Regex("""^[A-Z][A-Z .]{1,30}\s+\d{1,2}:\d{2}$""")
+
+    override fun parse(root: AccessibilityNodeInfo?): String {
+        val out = mutableListOf<String>()
+        var flipNext = false
+        for (line in super.parse(root).split("\n")) {
+            val body = line.substringAfter("]:", line).trim()
+            if (body.isEmpty()) continue
+            if (quoteHeader.matches(body)) {
+                flipNext = true
+                continue
+            }
+            if (flipNext) {
+                flipNext = false
+                val speaker = if (line.startsWith("[USER]")) "MATCH" else "USER"
+                out.add("[$speaker]: (quoted) $body")
+            } else {
+                out.add(line)
+            }
+        }
+        return out.joinToString("\n")
+    }
 }
 
 /**

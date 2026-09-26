@@ -162,6 +162,48 @@ INDIAN CONTEXT (users and matches are primarily in India, on apps like Hinge, Bu
 - Casual Indian-English markers ("yaar", "arre", "scene kya hai") are fine only when the conversation's existing style already uses them.
 - Output must be valid JSON matching the provided schema. No text outside the JSON.`;
 
+/**
+ * Splits labeled conversation text into per-speaker message lists. Lines
+ * without a label continue the previous speaker (same rule as the input
+ * parsers). Used to show the model, concretely per instance, which facts
+ * belong to whom — an abstract "don't ask about yourself" rule alone proved
+ * too easy to ignore.
+ */
+export function splitConversation(conversationText: string): { userLines: string[]; matchLines: string[] } {
+  const userLines: string[] = [];
+  const matchLines: string[] = [];
+  let current: "user" | "match" | null = null;
+  for (const rawLine of conversationText.split("\n")) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    if (/^\[USER\]/i.test(line)) {
+      current = "user";
+      userLines.push(line.replace(/^\[USER\]\s*/i, ""));
+    } else if (/^\[MATCH\]/i.test(line)) {
+      current = "match";
+      matchLines.push(line.replace(/^\[MATCH\]\s*/i, ""));
+    } else if (current === "user" && userLines.length > 0) {
+      userLines[userLines.length - 1] += " " + line;
+    } else if (current === "match" && matchLines.length > 0) {
+      matchLines[matchLines.length - 1] += " " + line;
+    }
+  }
+  return { userLines, matchLines };
+}
+
+function buildFactsSection(conversationText: string): string {
+  const { userLines, matchLines } = splitConversation(conversationText);
+  const userBlock = userLines.length > 0 ? userLines.map((l) => `- ${l}`).join("\n") : "(none yet)";
+  const matchBlock = matchLines.length > 0 ? matchLines.map((l) => `- ${l}`).join("\n") : "(none yet)";
+  return `
+YOUR MESSAGES (things YOU already told them — NEVER ask the match about any of these topics; they are YOUR information, not question material):
+${userBlock}
+
+MATCH'S MESSAGES (the ONLY source for your questions — ask about THESE):
+${matchBlock}
+`;
+}
+
 export function buildReplyUserPrompt(params: {
   conversationText: string;
   tone: Tone;
@@ -178,7 +220,7 @@ CONVERSATION (most recent messages last; [USER] is the person asking for help, [
 """
 ${conversationText}
 """
-
+${buildFactsSection(conversationText)}
 DESIRED TONE: ${tone} — ${TONE_DESCRIPTIONS[tone]}
 GOAL: ${goal} — ${GOAL_DESCRIPTIONS[goal]}
 LANGUAGE: ${language} — ${LANGUAGE_DESCRIPTIONS[language]}
