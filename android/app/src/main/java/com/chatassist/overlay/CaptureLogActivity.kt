@@ -39,6 +39,32 @@ class CaptureLogActivity : AppCompatActivity() {
     private fun render() {
         val list = findViewById<LinearLayout>(R.id.captureList)
         list.removeAllViews()
+        // Flight recorder first: foreground + bubble decisions, latest last.
+        // Reproduce the glitch, open this screen, and send this block over.
+        val fgLog = ChatBus.foregroundLog()
+        list.addView(TextView(this).apply {
+            text = "Foreground log (${fgLog.size}) — tap to copy"
+            textSize = 15f
+            setTextColor(getColor(R.color.ink))
+            setPadding(16, 12, 16, 4)
+        }.also { it.setTypeface(it.typeface, android.graphics.Typeface.BOLD) })
+        val logText = if (fgLog.isEmpty()) {
+            "(empty — no window changes observed since install)"
+        } else {
+            fgLog.joinToString("\n")
+        }
+        list.addView(TextView(this).apply {
+            text = logText
+            textSize = 11f
+            setPadding(16, 0, 16, 12)
+            setTextColor(getColor(android.R.color.black))
+            setTextIsSelectable(true)
+            setOnClickListener {
+                val cm = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+                cm.setPrimaryClip(ClipData.newPlainText("fglog", logText))
+                Toast.makeText(this@CaptureLogActivity, "Foreground log copied", Toast.LENGTH_SHORT).show()
+            }
+        })
         val chats = ChatBus.all()
         if (chats.isEmpty()) {
             list.addView(TextView(this).apply {

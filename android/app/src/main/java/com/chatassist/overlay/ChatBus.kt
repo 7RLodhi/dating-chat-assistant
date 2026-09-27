@@ -89,10 +89,37 @@ object ChatBus {
 
     fun notifyForeground(packageName: String) {
         foregroundPackage = packageName
+        appendFgLog("fg=$packageName")
         for (listener in foregroundListeners) {
             runCatching { listener(packageName) }
         }
     }
+
+    /**
+     * Flight recorder for visibility debugging: ring buffer of foreground
+     * changes and bubble show/hide decisions (with cause), viewable in the
+     * app's Capture log screen. No message content ever lands here — package
+     * names and timestamps only.
+     */
+    private const val FG_LOG_MAX = 40
+    private val fgLog = ArrayDeque<String>()
+
+    @Synchronized
+    private fun appendFgLog(entry: String) {
+        val t = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
+            .format(java.util.Date())
+        fgLog.addLast("$t $entry")
+        while (fgLog.size > FG_LOG_MAX) fgLog.removeFirst()
+    }
+
+    /** Bubble show/hide decisions, called by the overlay (cause included). */
+    @Synchronized
+    fun noteBubbleVisibility(visible: Boolean, cause: String) {
+        appendFgLog("bubble=${if (visible) "VISIBLE" else "GONE"} ($cause)")
+    }
+
+    @Synchronized
+    fun foregroundLog(): List<String> = fgLog.toList()
 
     private val snapshots = LinkedHashMap<String, ChatSnapshot>()
 

@@ -92,7 +92,7 @@ class OverlayService : Service() {
             if (pkg !in ChatBus.SUPPORTED_PACKAGES) {
                 if (panel != null) togglePanel()
             }
-            syncBubbleVisibility()
+            syncBubbleVisibility("fg-event")
         }
     }
 
@@ -125,13 +125,15 @@ class OverlayService : Service() {
     }
 
     /** Visible if and only if a supported app is in front (and panel closed). */
-    private fun syncBubbleVisibility() {
+    private fun syncBubbleVisibility(cause: String) {
         if (panel != null) {
             bubble?.visibility = View.GONE
+            ChatBus.noteBubbleVisibility(false, "$cause + panel open")
             return
         }
-        bubble?.visibility =
-            if (ChatBus.foregroundPackage in ChatBus.SUPPORTED_PACKAGES) View.VISIBLE else View.GONE
+        val visible = ChatBus.foregroundPackage in ChatBus.SUPPORTED_PACKAGES
+        bubble?.visibility = if (visible) View.VISIBLE else View.GONE
+        ChatBus.noteBubbleVisibility(visible, "$cause fg=${ChatBus.foregroundPackage}")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -140,7 +142,10 @@ class OverlayService : Service() {
         // package on purpose — panel/trash windows must not trigger it).
         if (intent?.action == ACTION_HIDE_BUBBLE) {
             mainHandler.post {
-                if (panel == null) bubble?.visibility = View.GONE
+                if (panel == null) {
+                    bubble?.visibility = View.GONE
+                    ChatBus.noteBubbleVisibility(false, "own activity open")
+                }
             }
             return START_STICKY
         }
@@ -239,7 +244,7 @@ class OverlayService : Service() {
         windowManager.addView(bubble, bubbleParams)
         // Start hidden unless a supported app is already in front — the
         // foreground listener takes over from here.
-        syncBubbleVisibility()
+        syncBubbleVisibility("bubble-created")
     }
 
     /**
@@ -456,9 +461,12 @@ class OverlayService : Service() {
         if (panel != null) {
             windowManager.removeView(panel)
             panel = null
-            // Bubble hid while the panel was open — show again only if a
-            // supported app is still in front.
-            syncBubbleVisibility()
+            // Panel-open guarantees a supported context (leaving auto-fires
+            // collapse first), so show directly — trusting the possibly stale
+            // foreground reading here is what wedged the bubble hidden. The
+            // foreground listener re-syncs right after when collapsing.
+            bubble?.visibility = View.VISIBLE
+            ChatBus.noteBubbleVisibility(true, "panel closed")
             return
         }
         val inflater = LayoutInflater.from(this)
@@ -519,7 +527,7 @@ class OverlayService : Service() {
         windowManager.addView(panel, panelParams)
         // The bubble would sit under/over the panel and steal taps — hide it
         // until the panel closes.
-        syncBubbleVisibility()
+        syncBubbleVisibility("panel opened")
         loadSuggestions()
     }
 
