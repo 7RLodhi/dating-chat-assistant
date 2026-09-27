@@ -133,7 +133,9 @@ class MatchDetailActivity : AppCompatActivity() {
     private fun renderChat() {
         chatBox.removeAllViews()
         val snapshot = ChatBus.get(key) ?: return
-        val lines = snapshot.text.lineSequence().map { it.trim() }
+        val lines = ChatBus.applySpeakerFixes(
+            snapshot.text, snapshot.speakerFixes
+        ).lineSequence().map { it.trim() }
             .filter { it.isNotEmpty() }.toList().takeLast(30)
         if (lines.isEmpty()) {
             chatBox.addView(sectionSmall("No chat text captured yet."))
@@ -161,7 +163,9 @@ class MatchDetailActivity : AppCompatActivity() {
     private fun loadSummary() {
         if (loadingFacts) return
         val snapshot = ChatBus.get(key)
-        val text = snapshot?.text.orEmpty()
+        val text = ChatBus.applySpeakerFixes(
+            snapshot?.text.orEmpty(), snapshot?.speakerFixes.orEmpty()
+        )
         if (text.isBlank()) {
             summaryBox.removeAllViews()
             summaryBox.addView(sectionSmall("No chat text to learn from yet."))

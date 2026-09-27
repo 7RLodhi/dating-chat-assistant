@@ -153,6 +153,12 @@ app to go back to tap-to-copy. Safeguards, all deliberate:
 - **One row per chat:** keys merge case-insensitively, so "NIDHIII…" /
   "Nidhiii…" can never list twice; matches keep hand-added notes and learned
   summaries across re-captures.
+- **Tap-to-flip attribution:** tapping a chat row in the panel reassigns it
+  to the other side, stores the correction positionally (survives
+  re-captures), and regenerates suggestions from the corrected text.
+- **👍/👎 taste votes:** every suggestion card carries vote buttons; votes
+  crystallize into LEARNED TASTE (same tone/length/emoji rules as the web
+  app) and steer all future generations on the device.
 
 - **Panel auto-dismiss:** the panel collapses by itself when you leave all
   supported apps (home, app switch, any other app). The bubble stays — tap it

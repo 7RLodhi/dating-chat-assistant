@@ -12,7 +12,13 @@ import org.json.JSONObject
 
 data class SuggestionResult(
     val mood: String,
-    val suggestions: List<String>,
+    val suggestions: List<SuggestionItem>,
+)
+
+/** One reply option with the tone the model assigned it (drives votes). */
+data class SuggestionItem(
+    val text: String,
+    val tone: String,
 )
 
 /** Learned fact sheet about one match: one-line summary plus labeled rows. */
@@ -37,6 +43,7 @@ object ApiClient {
         profileText: String = "",
         matchName: String = "",
         callback: (Result<SuggestionResult>) -> Unit,
+        tasteProfile: String = "",
     ) {
         Thread {
             try {
@@ -48,6 +55,7 @@ object ApiClient {
                     .put("language", "auto")
                     .put("profileText", profileText)
                     .put("matchName", matchName)
+                    .put("tasteProfile", tasteProfile)
                     .toString()
 
                 val conn = (URL(backendUrl).openConnection() as HttpURLConnection).apply {
@@ -68,13 +76,14 @@ object ApiClient {
                 val json = JSONObject(text)
 
                 val mood = json.optJSONObject("conversation_read")?.optString("summary").orEmpty()
-                val suggestions = mutableListOf<String>()
+                val suggestions = mutableListOf<SuggestionItem>()
                 val arr = json.optJSONArray("suggestions")
                 if (arr != null) {
                     for (i in 0 until arr.length()) {
-                        arr.optJSONObject(i)?.optString("text")?.takeIf { it.isNotBlank() }?.let {
-                            suggestions.add(it)
-                        }
+                        val o = arr.optJSONObject(i) ?: continue
+                        val text = o.optString("text")?.takeIf { it.isNotBlank() } ?: continue
+                        val tone = o.optString("tone", "casual").takeIf { it.isNotBlank() } ?: "casual"
+                        suggestions.add(SuggestionItem(text, tone))
                     }
                 }
                 if (suggestions.isEmpty()) throw IllegalStateException("Backend returned no suggestions")

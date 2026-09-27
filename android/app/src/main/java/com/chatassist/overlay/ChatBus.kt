@@ -29,6 +29,13 @@ object ChatBus {
         val suggestFor: String? = null,
         val suggestMood: String = "",
         val suggestItems: List<String> = emptyList(),
+        val suggestTones: List<String> = emptyList(),
+        /**
+         * Per-message speaker corrections, applied positionally: message body
+         * -> speaker per occurrence, in row order. Survives re-captures; may
+         * drift if the 30-row window slides past fixed duplicates (accepted).
+         */
+        val speakerFixes: Map<String, List<String>> = emptyMap(),
     )
 
     private const val MAX_CHATS = 10
@@ -126,6 +133,8 @@ object ChatBus {
             suggestFor = snapshot.suggestFor ?: existing?.suggestFor,
             suggestMood = snapshot.suggestMood.ifEmpty { existing?.suggestMood.orEmpty() },
             suggestItems = snapshot.suggestItems.ifEmpty { existing?.suggestItems.orEmpty() },
+            suggestTones = snapshot.suggestTones.ifEmpty { existing?.suggestTones.orEmpty() },
+            speakerFixes = snapshot.speakerFixes.ifEmpty { existing?.speakerFixes.orEmpty() },
         )
         snapshots[key] = merged
         while (snapshots.size > MAX_CHATS) {
@@ -156,15 +165,45 @@ object ChatBus {
 
     /** Stores a generated suggestion batch so re-Refresh is instant + free. */
     @Synchronized
-    fun updateSuggestions(key: String, mode: String, forText: String, mood: String, items: List<String>) {
+    fun updateSuggestions(
+        key: String, mode: String, forText: String, mood: String,
+        items: List<String>, tones: List<String>,
+    ) {
         val existing = snapshots[key] ?: return
         snapshots[key] = existing.copy(
             suggestMode = mode,
             suggestFor = forText,
             suggestMood = mood,
             suggestItems = items,
+            suggestTones = tones,
         )
         persistLocked()
+    }
+
+    /** Stores tap-to-flip speaker corrections for one chat. */
+    @Synchronized
+    fun updateSpeakerFixes(key: String, fixes: Map<String, List<String>>) {
+        val existing = snapshots[key] ?: return
+        snapshots[key] = existing.copy(speakerFixes = fixes)
+        persistLocked()
+    }
+
+    private val speakerTag = Regex("""^\[(USER|MATCH)\]:\s?(.*)$""", RegexOption.IGNORE_CASE)
+
+    /**
+     * Rewrites speaker tags per stored corrections, matching duplicate
+     * bodies positionally (1st "Ok" -> 1st fix, 2nd -> 2nd…). Unfixed lines
+     * and unknown bodies pass through untouched.
+     */
+    fun applySpeakerFixes(text: String, fixes: Map<String, List<String>>): String {
+        if (text.isEmpty() || fixes.isEmpty()) return text
+        val remaining = fixes.mapValues { ArrayDeque(it.value) }
+        return text.lineSequence().map { line ->
+            val m = speakerTag.matchEntire(line.trim()) ?: return@map line
+            val body = m.groupValues[2]
+            val forced = remaining[body]?.removeFirstOrNull()
+            if (forced == "USER" || forced == "MATCH") "[$forced]: $body" else line
+        }.joinToString("\n")
     }
 
     /** Saves a hand-added profile note (latestKey untouched). */
@@ -191,7 +230,9 @@ object ChatBus {
                     .put("suggestMode", s.suggestMode)
                     .put("suggestFor", s.suggestFor)
                     .put("suggestMood", s.suggestMood)
-                    .put("suggestItems", org.json.JSONArray(s.suggestItems)))
+                    .put("suggestItems", org.json.JSONArray(s.suggestItems))
+                    .put("suggestTones", org.json.JSONArray(s.suggestTones))
+                    .put("speakerFixes", JSONObject(s.speakerFixes.mapValues { org.json.JSONArray(it.value) })))
             }
             ctx.getSharedPreferences(PREFS_FILE, Context.MODE_PRIVATE).edit()
                 .putString(KEY_SNAPSHOTS, root.toString()).apply()
@@ -224,6 +265,21 @@ object ChatBus {
                     suggestItems = (o.optJSONArray("suggestItems")?.let { arr ->
                         (0 until arr.length()).mapNotNull {
                             arr.optString(it)?.takeIf { s -> s.isNotEmpty() }
+                        }
+                    }).orEmpty(),
+                    suggestTones = (o.optJSONArray("suggestTones")?.let { arr ->
+                        (0 until arr.length()).mapNotNull {
+                            arr.optString(it)?.takeIf { s -> s.isNotEmpty() }
+                        }
+                    }).orEmpty(),
+                    speakerFixes = (o.optJSONObject("speakerFixes")?.let { fo ->
+                        linkedMapOf<String, List<String>>().also { m ->
+                            for (k in fo.keys()) {
+                                val arr = fo.optJSONArray(k) ?: continue
+                                m[k] = (0 until arr.length()).mapNotNull {
+                                    arr.optString(it)?.takeIf { s -> s == "USER" || s == "MATCH" }
+                                }
+                            }
                         }
                     }).orEmpty(),
                 )

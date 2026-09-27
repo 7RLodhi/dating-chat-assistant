@@ -1,6 +1,7 @@
 package com.chatassist.overlay
 
 import android.content.Context
+import kotlin.math.roundToInt
 
 /** Tiny SharedPreferences wrapper. Backend URL points at your suggestion API. */
 object Prefs {
@@ -111,5 +112,90 @@ object Prefs {
     fun setCustomIconUri(ctx: Context, uri: String) {
         ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
             .putString(KEY_CUSTOM_ICON_URI, uri).apply()
+    }
+
+    // ---- Learned taste (mirrors webapp/lib/tasteProfile.ts exactly) ----
+    // 👍/👎 votes on suggestion cards crystallize into tone affinity, length
+    // preference and emoji appetite, sent as LEARNED TASTE with every
+    // generation. Same thresholds as web so both clients steer identically.
+    private const val KEY_TASTE_VOTES = "taste_votes_json"
+    private const val MAX_TASTE_VOTES = 100
+    private val CURRENT_TONES = setOf("casual", "playful", "witty", "sincere", "flirty", "spicy")
+    private val EMOJI_RE = Regex(
+        "[\u2600-\u27BF\u2B00-\u2BFF\uFE0F]|\uD83C[\uDF00-\uDFFF]|\uD83D[\uDC00-\uDEFF]|\uD83E[\uDD00-\uDFFF]"
+    )
+
+    private data class TasteVote(val tone: String, val text: String, val up: Boolean)
+
+    fun recordTasteVote(ctx: Context, tone: String, text: String, up: Boolean) {
+        val votes = getTasteVotes(ctx).toMutableList()
+        votes.add(TasteVote(tone.lowercase(), text, up))
+        while (votes.size > MAX_TASTE_VOTES) votes.removeAt(0)
+        val arr = org.json.JSONArray()
+        for (v in votes) {
+            arr.put(org.json.JSONObject()
+                .put("tone", v.tone)
+                .put("text", v.text)
+                .put("up", v.up))
+        }
+        ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+            .putString(KEY_TASTE_VOTES, arr.toString()).apply()
+    }
+
+    private fun getTasteVotes(ctx: Context): List<TasteVote> {
+        val raw = ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            .getString(KEY_TASTE_VOTES, null) ?: return emptyList()
+        return runCatching {
+            val arr = org.json.JSONArray(raw)
+            (0 until arr.length()).mapNotNull { i ->
+                val o = arr.optJSONObject(i) ?: return@mapNotNull null
+                TasteVote(
+                    tone = o.optString("tone").lowercase(),
+                    text = o.optString("text"),
+                    up = o.optBoolean("up", true),
+                )
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    /** Prompt-ready paragraph, or "" until votes crystallize (same as web). */
+    fun tasteProfile(ctx: Context): String {
+        val votes = getTasteVotes(ctx)
+        if (votes.size < 3) return ""
+        val lines = mutableListOf<String>()
+        val byTone = mutableMapOf<String, IntArray>() // tone -> [up, down]
+        for (v in votes) {
+            val e = byTone.getOrPut(v.tone) { intArrayOf(0, 0) }
+            if (v.up) e[0]++ else e[1]++
+        }
+        val loved = mutableListOf<String>()
+        val disliked = mutableListOf<String>()
+        for ((tone, e) in byTone) {
+            if (tone !in CURRENT_TONES) continue
+            if (e[0] + e[1] < 3) continue
+            val rate = e[0].toDouble() / (e[0] + e[1])
+            if (rate >= 0.67) loved.add(tone)
+            else if (rate <= 0.33) disliked.add(tone)
+        }
+        if (loved.isNotEmpty()) lines.add("Leans toward the ${loved.joinToString(", ")} tone.")
+        if (disliked.isNotEmpty()) lines.add("Steer away from the ${disliked.joinToString(", ")} tone.")
+
+        val ups = votes.filter { it.up }
+        val downs = votes.filter { !it.up }
+        if (ups.size >= 2 && downs.size >= 2) {
+            val avgUp = ups.sumOf { it.text.length }.toDouble() / ups.size
+            val avgDown = downs.sumOf { it.text.length }.toDouble() / downs.size
+            if (avgUp + 30 <= avgDown) {
+                lines.add("Prefers shorter messages (liked ones average ~${avgUp.roundToInt()} chars).")
+            } else if (avgDown + 30 <= avgUp) {
+                lines.add("Prefers longer, fuller messages (liked ones average ~${avgUp.roundToInt()} chars).")
+            }
+            val upRate = ups.count { EMOJI_RE.containsMatchIn(it.text) }.toDouble() / ups.size
+            val downRate = downs.count { EMOJI_RE.containsMatchIn(it.text) }.toDouble() / downs.size
+            if (upRate - downRate >= 0.4) lines.add("Likes messages with emoji.")
+            else if (downRate - upRate >= 0.4) lines.add("Prefers messages without emoji.")
+        }
+        if (lines.isEmpty()) return ""
+        return "LEARNED TASTE (from ${votes.size} past 👍/👎 votes by this user — steer toward what they demonstrably like):\n- ${lines.joinToString("\n- ")}"
     }
 }

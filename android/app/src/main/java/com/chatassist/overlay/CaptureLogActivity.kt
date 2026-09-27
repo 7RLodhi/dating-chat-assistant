@@ -48,6 +48,9 @@ class CaptureLogActivity : AppCompatActivity() {
                 if (s.factsJson != null) add("summary")
                 if (s.suggestItems.isNotEmpty()) add("suggestions")
                 if (s.userNote != null) add("note")
+                if (s.speakerFixes.isNotEmpty()) {
+                    add("${s.speakerFixes.values.sumOf { it.size }} speaker fixes")
+                }
             }.joinToString(", ").ifEmpty { "no extras" }
             val card = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL

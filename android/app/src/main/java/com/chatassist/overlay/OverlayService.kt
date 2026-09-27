@@ -541,8 +541,7 @@ class OverlayService : Service() {
         toggle.setOnClickListener {
             chatExpanded = !chatExpanded
             scroll.visibility = if (chatExpanded) View.VISIBLE else View.GONE
-            val rows = panelView.findViewById<LinearLayout>(R.id.chatRows)
-            updateChatToggle(toggle, rows.childCount)
+            updateChatToggle(toggle, displayedChatRows.size)
         }
     }
 
@@ -567,23 +566,44 @@ class OverlayService : Service() {
         if (summaryExpanded) loadFacts()
     }
 
+    private data class ChatRow(val speaker: String, val body: String)
+
+    /** Currently displayed (corrected) rows — backs tap-to-flip. */
+    private var displayedChatKey: String? = null
+    private var displayedChatRows: List<ChatRow> = emptyList()
+    /** A speaker flip landed mid-flight: reload once the call returns. */
+    private var pendingReload = false
+
     private fun renderChatSection(panelView: View) {
         val rows = panelView.findViewById<LinearLayout>(R.id.chatRows)
         val toggle = panelView.findViewById<TextView>(R.id.chatToggle)
         rows.removeAllViews()
-        val text = ChatBus.get(ChatBus.latestKey)?.text.orEmpty()
+        val snapshot = ChatBus.get(ChatBus.latestKey)
+        val text = ChatBus.applySpeakerFixes(
+            snapshot?.text.orEmpty(), snapshot?.speakerFixes.orEmpty()
+        )
         val lines = text.lineSequence().map { it.trim() }.filter { it.isNotEmpty() }.toList().takeLast(30)
-        if (lines.isEmpty()) {
+        val built = mutableListOf<ChatRow>()
+        for (line in lines) {
+            val upper = line.uppercase()
+            val isUser = upper.startsWith("[USER]")
+            val body = if (isUser || upper.startsWith("[MATCH]")) {
+                line.substringAfter("]:", line).trim()
+            } else {
+                line
+            }
+            if (body.isEmpty()) continue
+            built.add(ChatRow(if (isUser) "USER" else "MATCH", body))
+        }
+        displayedChatKey = ChatBus.latestKey
+        displayedChatRows = built
+        if (built.isEmpty()) {
             rows.addView(hintView("No chat text captured yet — open a conversation."))
         } else {
-            for (line in lines) {
-                val upper = line.uppercase()
-                val isUser = upper.startsWith("[USER]")
-                val isMatch = upper.startsWith("[MATCH]")
-                val body = if (isUser || isMatch) line.substringAfter("]:", line).trim() else line
-                if (body.isEmpty()) continue
-                val row = TextView(this).apply {
-                    this.text = if (isUser) "You: $body" else "Match: $body"
+            for ((index, row) in built.withIndex()) {
+                val isUser = row.speaker == "USER"
+                rows.addView(TextView(this).apply {
+                    this.text = if (isUser) "You: ${row.body}" else "Match: ${row.body}"
                     textSize = 13f
                     setPadding(8, 6, 8, 6)
                     gravity = if (isUser) Gravity.END else Gravity.START
@@ -591,11 +611,51 @@ class OverlayService : Service() {
                         if (isUser) getColor(android.R.color.holo_blue_dark)
                         else getColor(android.R.color.black)
                     )
-                }
-                rows.addView(row)
+                    setOnClickListener { flipSpeaker(index) }
+                })
             }
+            rows.addView(TextView(this).apply {
+                this.text = "Tap a message to correct its side"
+                textSize = 11f
+                setPadding(8, 4, 8, 2)
+                gravity = Gravity.CENTER
+                setTextColor(getColor(android.R.color.darker_gray))
+            })
         }
-        updateChatToggle(toggle, rows.childCount)
+        updateChatToggle(toggle, built.size)
+    }
+
+    /**
+     * Tap-to-flip: reassigns one row to the other speaker, stores the
+     * correction (survives re-captures), and regenerates suggestions from
+     * the corrected text.
+     */
+    private fun flipSpeaker(index: Int) {
+        val panelView = panel ?: return
+        val key = displayedChatKey ?: return
+        // Panel moved on while open: re-sync rows first, flip on next tap.
+        if (key != ChatBus.latestKey || ChatBus.get(key) == null) {
+            refreshChatSection()
+            Toast.makeText(this, "Chat updated — tap the message again", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val rows = displayedChatRows.toMutableList()
+        if (index !in rows.indices) return
+        rows[index] = rows[index].copy(
+            speaker = if (rows[index].speaker == "USER") "MATCH" else "USER"
+        )
+        val grouped = linkedMapOf<String, MutableList<String>>()
+        for ((speaker, body) in rows) {
+            grouped.getOrPut(body) { mutableListOf() }.add(speaker)
+        }
+        ChatBus.updateSpeakerFixes(key, grouped)
+        renderChatSection(panelView)
+        Toast.makeText(
+            this,
+            if (rows[index].speaker == "USER") "Marked as yours — regenerating" else "Marked as theirs — regenerating",
+            Toast.LENGTH_SHORT,
+        ).show()
+        if (loadingSuggestions) pendingReload = true else loadSuggestions()
     }
 
     private fun hintView(msg: String): TextView = TextView(this).apply {
@@ -673,7 +733,10 @@ class OverlayService : Service() {
         val rows = panelView.findViewById<LinearLayout>(R.id.summaryRows)
         val key = ChatBus.latestKey
         val snapshot = ChatBus.get(key)
-        val text = snapshot?.text.orEmpty()
+        // Corrected text: facts must learn from what you verified, not raw.
+        val text = ChatBus.applySpeakerFixes(
+            snapshot?.text.orEmpty(), snapshot?.speakerFixes.orEmpty()
+        )
         if (text.isBlank()) {
             rows.removeAllViews()
             rows.addView(hintView("No chat text captured yet — open a conversation first."))
@@ -729,7 +792,12 @@ class OverlayService : Service() {
         val list = panelView.findViewById<LinearLayout>(R.id.suggestionList)
         val key = ChatBus.latestKey
         val snapshot = ChatBus.get(key)
-        val text = snapshot?.text.orEmpty()
+        // Everything downstream reads the CORRECTED text (tap-to-flip
+        // applied), so rows, mood, suggestions and cache agree with each
+        // other — and flipping a row invalidates the cache by itself.
+        val text = ChatBus.applySpeakerFixes(
+            snapshot?.text.orEmpty(), snapshot?.speakerFixes.orEmpty()
+        )
         renderedKey = key
         pendingKey = null
         if (text.isBlank()) {
@@ -742,14 +810,22 @@ class OverlayService : Service() {
         val opener = !hasMatchContent(text)
         chatLabel.text = ChatBus.labelFor(key, snapshot!!)
         // Smart refresh: same request as last time → re-render the stored
-        // batch instantly instead of burning another API call.
+        // batch instantly instead of burning another API call. The taste
+        // hash is part of the fingerprint so new votes regenerate.
+        val taste = Prefs.tasteProfile(this)
         val mode = if (opener) "opener" else "reply"
-        val fingerprint = if (opener) "opener|${snapshot.title.orEmpty()}" else "reply|$text"
+        val fingerprint = if (opener) {
+            "opener|${snapshot.title.orEmpty()}|t${taste.hashCode()}"
+        } else {
+            "reply|$text|t${taste.hashCode()}"
+        }
         if (snapshot.suggestMode == mode && snapshot.suggestFor == fingerprint &&
             snapshot.suggestItems.isNotEmpty()
         ) {
             moodText.text = snapshot.suggestMood.ifBlank { "Suggestions ready — tap one to copy." }
-            renderSuggestionCards(list, snapshot.suggestItems)
+            renderSuggestionCards(list, snapshot.suggestItems.mapIndexed { i, s ->
+                SuggestionItem(s, snapshot.suggestTones.getOrElse(i) { "casual" })
+            })
             return
         }
         moodText.text = if (opener) "Thinking of openers…" else "Thinking…"
@@ -763,12 +839,14 @@ class OverlayService : Service() {
                 mode = "opener",
                 matchName = snapshot.title.orEmpty(),
                 callback = { result -> onSuggestionsLoaded(result, moodText, list, key, mode, fingerprint) },
+                tasteProfile = taste,
             )
         } else {
             ApiClient.fetchSuggestions(
                 Prefs.backendUrl(this),
                 text, tone,
                 callback = { result -> onSuggestionsLoaded(result, moodText, list, key, mode, fingerprint) },
+                tasteProfile = taste,
             )
         }
     }
@@ -787,35 +865,48 @@ class OverlayService : Service() {
             onSuccess = { r ->
                     moodText.text = r.mood.ifBlank { "Suggestions ready — tap one to copy." }
                     val items = r.suggestions.take(5)
-                    ChatBus.updateSuggestions(key, mode, fingerprint, r.mood, items)
+                    ChatBus.updateSuggestions(
+                        key, mode, fingerprint, r.mood,
+                        items.map { it.text }, items.map { it.tone },
+                    )
                     renderSuggestionCards(list, items)
                 },
                 onFailure = { e ->
                     moodText.text = "Couldn't load suggestions: ${e.message}"
                 },
             )
-        // A chat switch arrived mid-flight: serve it now.
+        // A chat switch arrived mid-flight, or a speaker flip did: serve it.
         val pk = pendingKey
         pendingKey = null
-        if (pk != null && pk != key && panel != null) {
+        val pr = pendingReload
+        pendingReload = false
+        if (panel != null && ((pk != null && pk != key) || pr)) {
             refreshChatSection()
             loadSuggestions()
         }
     }
 
-    /** Tappable suggestion cards, shared by fresh and cached batches. */
-    private fun renderSuggestionCards(list: LinearLayout, suggestions: List<String>) {
+    /**
+     * Tappable suggestion cards with 👍/👎 votes, shared by fresh and cached
+     * batches. Votes crystallize into LEARNED TASTE (same rules as web) and
+     * steer every future generation on this device.
+     */
+    private fun renderSuggestionCards(list: LinearLayout, suggestions: List<SuggestionItem>) {
         list.removeAllViews()
-        for (s in suggestions.take(5)) {
+        for (item in suggestions.take(5)) {
+                        val row = LinearLayout(this).apply {
+                            orientation = LinearLayout.HORIZONTAL
+                            gravity = android.view.Gravity.CENTER_VERTICAL
+                        }
                         val card = TextView(this).apply {
-                            this.text = s
+                            this.text = item.text
                             textSize = 14f
                             setPadding(20, 16, 20, 16)
                             setTextColor(getColor(android.R.color.black))
                         }
                         card.setOnClickListener {
                             if (Prefs.autoPaste(this)) {
-                                ChatBus.requestPaste(s) { ok ->
+                                ChatBus.requestPaste(item.text) { ok ->
                                     if (ok) {
                                         Toast.makeText(
                                             this,
@@ -823,7 +914,7 @@ class OverlayService : Service() {
                                             Toast.LENGTH_SHORT,
                                         ).show()
                                     } else {
-                                        copyToClipboard(s)
+                                        copyToClipboard(item.text)
                                         Toast.makeText(
                                             this,
                                             "Couldn't find the chat box — copied instead",
@@ -832,11 +923,45 @@ class OverlayService : Service() {
                                     }
                                 }
                             } else {
-                                copyToClipboard(s)
+                                copyToClipboard(item.text)
                                 Toast.makeText(this, "Copied — paste it into your chat", Toast.LENGTH_SHORT).show()
                             }
                         }
-                        list.addView(card)
+                        fun voteButton(emoji: String, up: Boolean): Button {
+                            return Button(this).apply {
+                                text = emoji
+                                textSize = 14f
+                                minWidth = 0
+                                minimumWidth = 0
+                                setPadding(8, 8, 8, 8)
+                                setOnClickListener {
+                                    Prefs.recordTasteVote(
+                                        this@OverlayService, item.tone, item.text, up
+                                    )
+                                    // One vote per card — lock both buttons.
+                                    for (i in 0 until row.childCount) {
+                                        (row.getChildAt(i) as? Button)?.let {
+                                            it.isEnabled = false
+                                            it.alpha = 0.4f
+                                        }
+                                    }
+                                    Toast.makeText(
+                                        this@OverlayService,
+                                        if (up) "Noted 👍 — more like this" else "Noted 👎 — less like this",
+                                        Toast.LENGTH_SHORT,
+                                    ).show()
+                                }
+                            }
+                        }
+                        val upBtn = voteButton("👍", true)
+                        val downBtn = voteButton("👎", false)
+                        row.addView(
+                            card,
+                            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f),
+                        )
+                        row.addView(upBtn)
+                        row.addView(downBtn)
+                        list.addView(row)
                     }
     }
 

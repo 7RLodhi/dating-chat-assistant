@@ -188,12 +188,13 @@ class MainActivity : AppCompatActivity() {
                 Prefs.backendUrl(this),
                 "[MATCH]: hey! how was your weekend?\n[USER]: pretty good, went hiking",
                 Prefs.tone(this),
-            ) { result ->
-                testResult.text = result.fold(
-                    onSuccess = { "OK: ${it.suggestions.first()}" },
-                    onFailure = { "Failed: ${it.message}" },
-                )
-            }
+                callback = { result ->
+                    testResult.text = result.fold(
+                        onSuccess = { "OK: ${it.suggestions.first().text}" },
+                        onFailure = { "Failed: ${it.message}" },
+                    )
+                },
+            )
         }
     }
 
