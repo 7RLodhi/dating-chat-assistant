@@ -62,7 +62,10 @@ object ApiClient {
                     requestMethod = "POST"
                     setRequestProperty("Content-Type", "application/json")
                     connectTimeout = 15000
-                    readTimeout = 15000
+                    // Suggestions can take 8-12s normally and ~2x that when
+                    // the server runs its grammar-retry pass — 15s timed out
+                    // healthy requests. 45s fails only on real outages.
+                    readTimeout = 45000
                     doOutput = true
                 }
                 OutputStreamWriter(conn.outputStream, StandardCharsets.UTF_8).use { it.write(body) }
@@ -122,7 +125,7 @@ object ApiClient {
                     requestMethod = "POST"
                     setRequestProperty("Content-Type", "application/json")
                     connectTimeout = 15000
-                    readTimeout = 20000
+                    readTimeout = 40000
                     doOutput = true
                 }
                 OutputStreamWriter(conn.outputStream, StandardCharsets.UTF_8).use { it.write(body.toString()) }

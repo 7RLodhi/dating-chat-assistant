@@ -20,13 +20,10 @@ import android.graphics.Outline
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.view.ViewOutlineProvider
-import android.widget.AdapterView
-import android.widget.ArrayAdapter
 import android.widget.Button
 import org.json.JSONObject
 import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
@@ -525,7 +522,7 @@ class OverlayService : Service() {
         }
         val panelView = panel!!
         panelView.alpha = Prefs.panelAlphaPct(this) / 100f
-        panelView.findViewById<Button>(R.id.btnClose).setOnClickListener { togglePanel() }
+        setupCloseButton(panelView, panelParams!!)
         panelView.findViewById<Button>(R.id.btnRefresh).setOnClickListener {
             // Re-capture first: if the reader missed this chat (debounced
             // switch, settled screen), Refresh heals it instead of
@@ -534,7 +531,7 @@ class OverlayService : Service() {
             refreshChatSection()
             loadSuggestions()
         }
-        setupToneSpinner(panelView)
+        setupToneButton(panelView)
         // Chat starts collapsed on every open (the live chat is already
         // visible behind the panel; rows are one tap away if needed).
         chatExpanded = false
@@ -552,25 +549,84 @@ class OverlayService : Service() {
         loadSuggestions()
     }
 
-    /** Tone selector inside the panel — changing it regenerates immediately. */
-    private fun setupToneSpinner(panelView: View) {
-        val spinner = panelView.findViewById<Spinner>(R.id.toneSpinner)
+    /**
+     * Close button with dual behavior: tap closes the panel, press-and-hold
+     * drags it (same threshold pattern as the bubble). A plain click
+     * listener can't do both, so touch is handled directly.
+     */
+    @SuppressLint("ClickableViewAccessibility")
+    private fun setupCloseButton(panelView: View, params: WindowManager.LayoutParams) {
+        val close = panelView.findViewById<Button>(R.id.btnClose)
+        var downX = 0
+        var downY = 0
+        var startX = 0
+        var startY = 0
+        var moved = false
+        close.setOnTouchListener { _, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    downX = event.rawX.toInt()
+                    downY = event.rawY.toInt()
+                    startX = params.x
+                    startY = params.y
+                    moved = false
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = event.rawX.toInt() - downX
+                    val dy = event.rawY.toInt() - downY
+                    if (dx * dx + dy * dy > 100) moved = true
+                    if (moved) {
+                        params.x = startX + dx
+                        params.y = startY + dy
+                        windowManager.updateViewLayout(panel, params)
+                    }
+                    true
+                }
+                MotionEvent.ACTION_UP -> {
+                    if (!moved) togglePanel()
+                    true
+                }
+                else -> false
+            }
+        }
+    }
+
+    /**
+     * Tone selector as an in-panel expanding list. A Spinner was tried first,
+     * but its popup window cannot operate inside a non-focusable overlay —
+     * taps either did nothing or fired while dragging. Only the small button
+     * toggles the list; every other header touch still drags the panel.
+     */
+    private fun setupToneButton(panelView: View) {
         val labels = resources.getStringArray(R.array.tone_labels)
         val values = resources.getStringArray(R.array.tone_values)
-        spinner.adapter = ArrayAdapter(
-            this, android.R.layout.simple_spinner_item, labels
-        ).also { it.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item) }
-        var initializing = true
-        spinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>, v: View?, position: Int, id: Long) {
-                if (initializing) return
-                Prefs.setTone(this@OverlayService, values[position])
-                loadSuggestions()
-            }
-            override fun onNothingSelected(parent: AdapterView<*>) {}
+        val button = panelView.findViewById<TextView>(R.id.toneButton)
+        val options = panelView.findViewById<LinearLayout>(R.id.toneOptions)
+        fun refreshLabel() {
+            val i = values.indexOf(Prefs.tone(this)).coerceAtLeast(0)
+            button.text = "${labels[i]} ▾"
         }
-        spinner.setSelection(values.indexOf(Prefs.tone(this)).coerceAtLeast(0))
-        initializing = false
+        refreshLabel()
+        options.removeAllViews()
+        for (i in labels.indices) {
+            options.addView(TextView(this).apply {
+                text = labels[i]
+                textSize = 15f
+                setPadding(24, 14, 8, 14)
+                setTextColor(getColor(android.R.color.black))
+                setOnClickListener {
+                    Prefs.setTone(this@OverlayService, values[i])
+                    refreshLabel()
+                    options.visibility = View.GONE
+                    loadSuggestions()
+                }
+            })
+        }
+        button.setOnClickListener {
+            options.visibility =
+                if (options.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+        }
     }
 
     // Guards overlapping requests (double-tapped Refresh rendered the same
@@ -721,6 +777,23 @@ class OverlayService : Service() {
         setTextColor(getColor(android.R.color.darker_gray))
     }
 
+    /**
+     * Timeouts get their own wording: with healthy requests taking 8-12s,
+     * "timed out" means "servers are slow, your chat is fine" — not a bug to
+     * report. Everything else keeps the technical detail for debugging.
+     */
+    private fun friendlyLoadError(e: Throwable, what: String): String {
+        val msg = e.message.orEmpty()
+        if (e is java.net.SocketTimeoutException ||
+            msg.contains("timed out", ignoreCase = true) ||
+            msg.contains("timeout", ignoreCase = true)
+        ) {
+            return "Timed out — servers are slow right now. Tap Refresh to retry."
+        }
+        return if (what == "summary") "Couldn't load summary: $msg"
+        else "Couldn't load suggestions: $msg"
+    }
+
     private fun renderStoredSummary(panelView: View) {
         val rows = panelView.findViewById<LinearLayout>(R.id.summaryRows)
         rows.removeAllViews()
@@ -826,7 +899,7 @@ class OverlayService : Service() {
                 onFailure = { e ->
                     if (ChatBus.latestKey == key) {
                         rows.removeAllViews()
-                        rows.addView(hintView("Couldn't load summary: ${e.message} — tap 📋 Summary to retry."))
+                        rows.addView(hintView(friendlyLoadError(e, "summary") + " — tap 📋 Summary to retry."))
                     }
                 },
             )
@@ -930,7 +1003,7 @@ class OverlayService : Service() {
                     renderSuggestionCards(list, items)
                 },
                 onFailure = { e ->
-                    moodText.text = "Couldn't load suggestions: ${e.message}"
+                    moodText.text = friendlyLoadError(e, "suggestions")
                 },
             )
         // A chat switch arrived mid-flight, or a speaker flip did: serve it.

@@ -121,6 +121,11 @@ object ChatBus {
     @Synchronized
     fun foregroundLog(): List<String> = fgLog.toList()
 
+    /** Feed-contamination check, shared by the reader gate and heal rule. */
+    fun looksContaminated(appPackage: String, text: String): Boolean =
+        runCatching { ChatParser.forPackage(appPackage).looksContaminated(text) }
+            .getOrDefault(false)
+
     private val snapshots = LinkedHashMap<String, ChatSnapshot>()
 
     /**
@@ -153,11 +158,16 @@ object ChatBus {
         if (existing != null && existing.text != snapshot.text) {
             // Anti-shrink: mid-transition trees and scrolled slices capture
             // partial slices ("Ok" alone); they must never clobber a fuller
-            // history. Keep the old text, but still move latestKey (the user
-            // IS viewing this chat) so the panel renders the full version.
+            // history. Heal instead: a clean capture replaces a
+            // feed-contaminated stored snapshot at any length (the reader
+            // gates dirty frames going forward; this repairs pre-fix
+            // stores that the gate never saw).
+            val storedDirty = looksContaminated(snapshot.appPackage, existing.text)
+            val newDirty = looksContaminated(snapshot.appPackage, snapshot.text)
             val oldRows = existing.text.lineSequence().count { it.isNotBlank() }
             val newRows = snapshot.text.lineSequence().count { it.isNotBlank() }
-            if (oldRows >= 3 && newRows < oldRows) {
+            val heals = storedDirty && !newDirty
+            if (!heals && oldRows >= 3 && newRows < oldRows) {
                 latestKey = key
                 for (listener in snapshotListeners) {
                     runCatching { listener(key) }

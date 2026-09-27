@@ -159,6 +159,12 @@ app to go back to tap-to-copy. Safeguards, all deliberate:
 - **👍/👎 taste votes:** every suggestion card carries vote buttons; votes
   crystallize into LEARNED TASTE (same tone/length/emoji rules as the web
   app) and steer all future generations on the device.
+- **Feed-contamination gate:** mid-transition frames (friend-list rows mixed
+  into chat) are dropped, never published — and a clean capture heals an
+  already-stored dirty snapshot at any length.
+- **Generous timeouts:** suggestion calls allow 45s (healthy ones take
+  8-12s, double on grammar-retry); timeouts report as "servers are slow",
+  not raw errors.
 
 - **Panel auto-dismiss:** the panel collapses by itself when you leave all
   supported apps (home, app switch, any other app). The bubble stays — tap it

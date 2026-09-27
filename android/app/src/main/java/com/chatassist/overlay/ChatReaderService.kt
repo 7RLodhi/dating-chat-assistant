@@ -217,6 +217,10 @@ class ChatReaderService : AccessibilityService() {
             // and list-screen markers are double-checked after parsing.
             if (!parser.hasChatInput(root)) return false
             val text = parser.parse(root)
+            // Mid-transition frames (feed rows mixed into chat) are dropped
+            // outright — publishing them would poison the snapshot and every
+            // suggestion after it.
+            if (parser.looksContaminated(text)) return false
             // Empty chats publish too (title only): switching to a fresh,
             // message-less conversation must move latestKey and yield
             // openers — otherwise the panel sticks on the previous match.

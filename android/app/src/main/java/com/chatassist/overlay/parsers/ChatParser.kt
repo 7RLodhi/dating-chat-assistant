@@ -176,6 +176,14 @@ open class ChatParser(val appPackage: String) {
     }
 
     /**
+     * True when parsed text looks like a mid-transition frame (feed rows
+     * mixed into the chat) rather than a clean conversation. Frames like
+     * that must be dropped, not published — and must never clobber a clean
+     * stored snapshot (see ChatBus.publish's heal rule).
+     */
+    open fun looksContaminated(text: String): Boolean = false
+
+    /**
      * True when this looks like an app list/feed screen rather than an open
      * conversation (chat-list, Status/Calls tabs, Snapchat feed…). Those
      * screens fire the same content events, and without this gate every
@@ -263,6 +271,22 @@ class SnapchatParser : ChatParser("com.snapchat.android") {
         // the LLM as things somebody "said").
         Regex("""\d{1,2}:\d{2}(:\d{2})?(\s?[AaPp][Mm])?"""),
     )
+
+    // Feed-row fingerprints. Internal view IDs (avatar_container,
+    // feed_muted_notification_icon…) and feed delivery ages ("Received 12h")
+    // never occur inside a real conversation — when present, feed rows leaked
+    // into the tree mid-transition and the whole frame is untrustworthy.
+    private val contaminationId =
+        Regex("""^[a-z][a-z0-9_]*(_container|_icon|_button|_view|_layout)$""")
+    private val contaminationStatus =
+        Regex("""(?i)^(delivered|opened|received|sent|viewed)\s+\d+\s*[mhd]$""")
+
+    override fun looksContaminated(text: String): Boolean {
+        return text.lineSequence().map { it.substringAfter("]:", it).trim() }.any { line ->
+            contaminationId.matches(line) || contaminationStatus.matches(line) ||
+                line.contains("arrive safely", ignoreCase = true)
+        }
+    }
 
     /**
      * Quoted replies come in two node shapes. Single-node ("SONAM THAKUR
