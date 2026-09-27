@@ -16,6 +16,9 @@ object ChatBus {
         val title: String?,
         val text: String,
         val at: Long,
+        /** Raw /api/facts JSON, plus the exact text it was computed from. */
+        val factsJson: String? = null,
+        val factsText: String? = null,
     )
 
     private const val MAX_CHATS = 10
@@ -80,6 +83,13 @@ object ChatBus {
 
     @Synchronized
     fun get(key: String): ChatSnapshot? = snapshots[key]
+
+    /** Attaches a freshly fetched fact sheet to a chat (latestKey untouched). */
+    @Synchronized
+    fun updateFacts(key: String, factsJson: String, factsText: String) {
+        val existing = snapshots[key] ?: return
+        snapshots[key] = existing.copy(factsJson = factsJson, factsText = factsText)
+    }
 
     /**
      * Tap-to-paste plumbing. The overlay (plain Service, no node access)

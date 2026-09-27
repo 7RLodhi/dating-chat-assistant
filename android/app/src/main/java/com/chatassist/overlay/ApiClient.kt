@@ -15,6 +15,12 @@ data class SuggestionResult(
     val suggestions: List<String>,
 )
 
+/** Learned fact sheet about one match: one-line summary plus labeled rows. */
+data class FactSheet(
+    val summary: String,
+    val rows: List<Pair<String, String>>,
+)
+
 /**
  * Minimal client for the suggestion backend (same contract as the web app's
  * /api/suggest). Zero dependencies: HttpURLConnection + org.json (bundled).
@@ -77,5 +83,118 @@ object ApiClient {
                 mainHandler.post { callback(Result.failure(e)) }
             }
         }.start()
+    }
+
+    /**
+     * Fetches the learned fact sheet for one chat (same contract as the web
+     * app's /api/facts). `previousFacts` enables incremental merging —
+     * pass the stored sheet back so new details merge instead of replacing.
+     */
+    fun fetchFacts(
+        backendUrl: String,
+        conversationText: String,
+        previousFacts: JSONObject?,
+        callback: (Result<Pair<JSONObject, FactSheet>>) -> Unit,
+    ) {
+        Thread {
+            try {
+                val factsUrl = if (backendUrl.endsWith("/api/suggest")) {
+                    backendUrl.removeSuffix("/api/suggest") + "/api/facts"
+                } else {
+                    "$backendUrl/api/facts"
+                }
+                val body = JSONObject()
+                    .put("bio", "")
+                    .put("conversationText", conversationText)
+                if (previousFacts != null) body.put("previousFacts", previousFacts)
+
+                val conn = (URL(factsUrl).openConnection() as HttpURLConnection).apply {
+                    requestMethod = "POST"
+                    setRequestProperty("Content-Type", "application/json")
+                    connectTimeout = 15000
+                    readTimeout = 20000
+                    doOutput = true
+                }
+                OutputStreamWriter(conn.outputStream, StandardCharsets.UTF_8).use { it.write(body.toString()) }
+
+                val code = conn.responseCode
+                if (code !in 200..299) {
+                    throw IllegalStateException("Backend returned HTTP $code")
+                }
+                val json = JSONObject(
+                    BufferedReader(InputStreamReader(conn.inputStream, StandardCharsets.UTF_8))
+                        .use { it.readText() }
+                )
+                mainHandler.post { callback(Result.success(json to buildFactSheet(json))) }
+            } catch (e: Exception) {
+                mainHandler.post { callback(Result.failure(e)) }
+            }
+        }.start()
+    }
+
+    private fun JSONObject.str(key: String): String = optString(key, "").trim()
+
+    private fun JSONObject.strList(key: String): String {
+        val arr = optJSONArray(key) ?: return ""
+        return (0 until arr.length())
+            .mapNotNull { arr.optString(it)?.trim()?.takeIf { s -> s.isNotEmpty() } }
+            .joinToString(", ")
+    }
+
+    private fun displayAge(json: JSONObject): String {
+        val stated = json.str("age")
+        if (stated.isNotEmpty()) return stated
+        return try {
+            val dob = java.time.LocalDate.parse(json.str("dob"))
+            java.time.Period.between(dob, java.time.LocalDate.now()).years.toString()
+        } catch (_: Exception) {
+            ""
+        }
+    }
+
+    private fun occupationLine(json: JSONObject): String {
+        fun s(key: String) = json.str(key)
+        return when (s("occupationType")) {
+            "student" -> when (s("educationLevel")) {
+                "school" -> "Student" +
+                    (if (s("schoolClass").isNotEmpty()) " — ${s("schoolClass")} grade" else "") +
+                    (if (s("schoolStream").isNotEmpty()) ", ${s("schoolStream")}" else "")
+                "college" -> {
+                    val parts = listOf(s("collegeYear"), s("degree")).filter { it.isNotEmpty() }
+                    "Student" +
+                        (if (parts.isNotEmpty()) " — ${parts.joinToString(" ")}" else "") +
+                        (if (s("branch").isNotEmpty()) " in ${s("branch")}" else "")
+                }
+                else -> "Student"
+            }
+            "professional" -> {
+                val role = listOf(
+                    s("jobRole"),
+                    if (s("company").isNotEmpty()) "at ${s("company")}" else "",
+                ).filter { it.isNotEmpty() }.joinToString(" ")
+                (if (role.isNotEmpty()) role else "Working professional") +
+                    (if (s("jobLocation").isNotEmpty()) " (${s("jobLocation")})" else "")
+            }
+            else -> ""
+        }
+    }
+
+    /** Rebuilds display rows from stored fact JSON (same output as fetch). */
+    fun buildFactSheet(json: JSONObject): FactSheet {
+        val rows = mutableListOf<Pair<String, String>>()
+        fun add(label: String, value: String) {
+            if (value.isNotEmpty()) rows.add(label to value)
+        }
+        add("Age", displayAge(json))
+        add("Location", json.str("location"))
+        add("Occupation", occupationLine(json))
+        add("Hobbies", json.strList("hobbies"))
+        add("Taste", json.strList("taste"))
+        add("Surprises", json.str("surprises"))
+        add("Dreams", json.strList("dreams"))
+        add("Wishlist", json.strList("wishlist"))
+        add("Fantasies", json.strList("fantasies"))
+        add("Other", json.strList("other"))
+        return FactSheet(summary = json.str("summary"), rows = rows)
     }
 }

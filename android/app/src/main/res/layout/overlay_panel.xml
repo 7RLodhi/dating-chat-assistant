@@ -46,6 +46,53 @@
         android:textColor="#6B7280"
         android:textSize="13sp" />
 
+    <TextView
+        android:id="@+id/chatToggle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="💬 Chat"
+        android:textColor="@color/ink"
+        android:textSize="14sp"
+        android:textStyle="bold" />
+
+    <ScrollView
+        android:id="@+id/chatScroll"
+        android:layout_width="match_parent"
+        android:layout_height="110dp"
+        android:layout_marginTop="4dp">
+
+        <LinearLayout
+            android:id="@+id/chatRows"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+    </ScrollView>
+
+    <TextView
+        android:id="@+id/summaryToggle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="📋 Summary"
+        android:textColor="@color/ink"
+        android:textSize="14sp"
+        android:textStyle="bold" />
+
+    <ScrollView
+        android:id="@+id/summaryScroll"
+        android:layout_width="match_parent"
+        android:layout_height="150dp"
+        android:layout_marginTop="4dp"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:id="@+id/summaryRows"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+    </ScrollView>
+
     <ScrollView
         android:layout_width="match_parent"
         android:layout_height="0dp"

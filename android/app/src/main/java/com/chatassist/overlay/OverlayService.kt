@@ -22,6 +22,7 @@ import android.view.ViewOutlineProvider
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Button
+import org.json.JSONObject
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.Spinner
@@ -329,8 +330,17 @@ class OverlayService : Service() {
         val panelView = panel!!
         panelView.alpha = Prefs.panelAlphaPct(this) / 100f
         panelView.findViewById<Button>(R.id.btnClose).setOnClickListener { togglePanel() }
-        panelView.findViewById<Button>(R.id.btnRefresh).setOnClickListener { loadSuggestions() }
+        panelView.findViewById<Button>(R.id.btnRefresh).setOnClickListener {
+            refreshChatSection()
+            loadSuggestions()
+        }
         setupToneSpinner(panelView)
+        chatExpanded = true
+        summaryExpanded = false
+        wireChatSection(panelView)
+        wireSummarySection(panelView)
+        renderChatSection(panelView)
+        renderStoredSummary(panelView)
         makeResizable(panelView.findViewById(R.id.resizeHandle), panelParams!!)
         makeDraggable(panelView.findViewById(R.id.panelHeader), panelParams!!)
         windowManager.addView(panel, panelParams)
@@ -361,6 +371,180 @@ class OverlayService : Service() {
     // Guards overlapping requests (double-tapped Refresh rendered the same
     // batch twice). Reset on every callback path below.
     private var loadingSuggestions = false
+    private var loadingFacts = false
+    private var chatExpanded = true
+    private var summaryExpanded = false
+
+    private fun updateChatToggle(toggle: TextView, count: Int) {
+        val arrow = if (chatExpanded) "▾" else "▸"
+        toggle.text = if (count > 0) "💬 Chat ($count) $arrow" else "💬 Chat $arrow"
+    }
+
+    private fun updateSummaryToggle(toggle: TextView) {
+        val arrow = if (summaryExpanded) "▾" else "▸"
+        toggle.text = "📋 Summary $arrow"
+    }
+
+    private fun wireChatSection(panelView: View) {
+        val toggle = panelView.findViewById<TextView>(R.id.chatToggle)
+        val scroll = panelView.findViewById<View>(R.id.chatScroll)
+        scroll.visibility = if (chatExpanded) View.VISIBLE else View.GONE
+        toggle.setOnClickListener {
+            chatExpanded = !chatExpanded
+            scroll.visibility = if (chatExpanded) View.VISIBLE else View.GONE
+            val rows = panelView.findViewById<LinearLayout>(R.id.chatRows)
+            updateChatToggle(toggle, rows.childCount)
+        }
+    }
+
+    private fun wireSummarySection(panelView: View) {
+        val toggle = panelView.findViewById<TextView>(R.id.summaryToggle)
+        val scroll = panelView.findViewById<View>(R.id.summaryScroll)
+        updateSummaryToggle(toggle)
+        scroll.visibility = if (summaryExpanded) View.VISIBLE else View.GONE
+        toggle.setOnClickListener {
+            summaryExpanded = !summaryExpanded
+            scroll.visibility = if (summaryExpanded) View.VISIBLE else View.GONE
+            updateSummaryToggle(toggle)
+            if (summaryExpanded) loadFacts()
+        }
+    }
+
+    /** Re-renders chat rows + stored summary (no network). */
+    private fun refreshChatSection() {
+        val panelView = panel ?: return
+        renderChatSection(panelView)
+        renderStoredSummary(panelView)
+        if (summaryExpanded) loadFacts()
+    }
+
+    private fun renderChatSection(panelView: View) {
+        val rows = panelView.findViewById<LinearLayout>(R.id.chatRows)
+        val toggle = panelView.findViewById<TextView>(R.id.chatToggle)
+        rows.removeAllViews()
+        val text = ChatBus.get(ChatBus.latestKey)?.text.orEmpty()
+        val lines = text.lineSequence().map { it.trim() }.filter { it.isNotEmpty() }.toList().takeLast(30)
+        if (lines.isEmpty()) {
+            rows.addView(hintView("No chat text captured yet — open a conversation."))
+        } else {
+            for (line in lines) {
+                val upper = line.uppercase()
+                val isUser = upper.startsWith("[USER]")
+                val isMatch = upper.startsWith("[MATCH]")
+                val body = if (isUser || isMatch) line.substringAfter("]:", line).trim() else line
+                if (body.isEmpty()) continue
+                val row = TextView(this).apply {
+                    this.text = if (isUser) "You: $body" else "Match: $body"
+                    textSize = 13f
+                    setPadding(8, 6, 8, 6)
+                    gravity = if (isUser) Gravity.END else Gravity.START
+                    setTextColor(
+                        if (isUser) getColor(android.R.color.holo_blue_dark)
+                        else getColor(android.R.color.black)
+                    )
+                }
+                rows.addView(row)
+            }
+        }
+        updateChatToggle(toggle, rows.childCount)
+    }
+
+    private fun hintView(msg: String): TextView = TextView(this).apply {
+        text = msg
+        textSize = 12f
+        setPadding(8, 6, 8, 6)
+        setTextColor(getColor(android.R.color.darker_gray))
+    }
+
+    private fun renderStoredSummary(panelView: View) {
+        val rows = panelView.findViewById<LinearLayout>(R.id.summaryRows)
+        rows.removeAllViews()
+        val snapshot = ChatBus.get(ChatBus.latestKey)
+        val raw = snapshot?.factsJson
+        if (raw.isNullOrBlank()) {
+            rows.addView(hintView("Tap 📋 Summary to load what the AI has learned about this match."))
+            return
+        }
+        val sheet = runCatching { ApiClient.buildFactSheet(JSONObject(raw)) }.getOrNull()
+        if (sheet == null) {
+            rows.addView(hintView("Saved summary looks corrupt — tap 📋 Summary to reload."))
+            return
+        }
+        renderFactSheet(rows, sheet)
+    }
+
+    private fun renderFactSheet(rows: LinearLayout, sheet: FactSheet) {
+        rows.removeAllViews()
+        if (sheet.summary.isNotBlank()) {
+            rows.addView(TextView(this).apply {
+                text = sheet.summary
+                textSize = 13f
+                setPadding(8, 6, 8, 10)
+                setTextColor(getColor(android.R.color.black))
+            })
+        }
+        if (sheet.rows.isEmpty() && sheet.summary.isBlank()) {
+            rows.addView(hintView("Nothing learned yet — chat a bit more, then Refresh."))
+            return
+        }
+        for ((label, value) in sheet.rows) {
+            rows.addView(TextView(this).apply {
+                text = label
+                textSize = 11f
+                setPadding(8, 6, 8, 0)
+                setTextColor(getColor(android.R.color.darker_gray))
+            })
+            rows.addView(TextView(this).apply {
+                text = value
+                textSize = 13f
+                setPadding(8, 0, 8, 6)
+                setTextColor(getColor(android.R.color.black))
+            })
+        }
+    }
+
+    /** Fetches (or reuses) the learned fact sheet for the current chat. */
+    private fun loadFacts() {
+        if (loadingFacts) return
+        val panelView = panel ?: return
+        val rows = panelView.findViewById<LinearLayout>(R.id.summaryRows)
+        val key = ChatBus.latestKey
+        val snapshot = ChatBus.get(key)
+        val text = snapshot?.text.orEmpty()
+        if (text.isBlank()) {
+            rows.removeAllViews()
+            rows.addView(hintView("No chat text captured yet — open a conversation first."))
+            return
+        }
+        // Stored sheet for this exact text: render instantly, no network.
+        val stored = snapshot?.factsJson
+        if (!stored.isNullOrBlank() && snapshot?.factsText == text) {
+            renderStoredSummary(panelView)
+            return
+        }
+        loadingFacts = true
+        rows.removeAllViews()
+        rows.addView(hintView("Learning summary…"))
+        val previous = stored?.let { runCatching { JSONObject(it) }.getOrNull() }
+        ApiClient.fetchFacts(Prefs.backendUrl(this), text, previous) { result ->
+            loadingFacts = false
+            val pv = panel ?: return@fetchFacts
+            result.fold(
+                onSuccess = { (json, sheet) ->
+                    ChatBus.updateFacts(key, json.toString(), text)
+                    if (ChatBus.latestKey == key) {
+                        renderFactSheet(pv.findViewById(R.id.summaryRows), sheet)
+                    }
+                },
+                onFailure = { e ->
+                    if (ChatBus.latestKey == key) {
+                        rows.removeAllViews()
+                        rows.addView(hintView("Couldn't load summary: ${e.message} — tap 📋 Summary to retry."))
+                    }
+                },
+            )
+        }
+    }
 
     /** True when the match has said anything substantive (not just labels). */
     private fun hasMatchContent(text: String): Boolean =
