@@ -211,13 +211,19 @@ class SnapchatParser : ChatParser("com.snapchat.android") {
     )
 
     /**
-     * Quoted replies ("SONAM THAKUR 21:20" header + quoted text): drop the
-     * header and re-attribute the quoted line to the OTHER speaker, mirroring
-     * the screenshot-OCR rule. Without this, your reply ("Software
-     * developer") and their quoted question merge into one side and
-     * suggestions end up asking about YOUR facts.
+     * Quoted replies come in two node shapes. Single-node ("SONAM THAKUR
+     * 21:20" header + quoted text) and split-node, where Snapchat exposes
+     * the header as separate leaves: a sender tag ("ME"), a standalone
+     * clock time ("11:04"), then the quoted words — all nested inside the
+     * quoter's own message group (see the white quote bubble). The split
+     * shape is the dangerous one: without special handling, the inner "ME"
+     * reads as a speaker switch and every message after it (e.g. her "Kyu" /
+     * "Pagal ho") gets attributed to YOU. Both shapes drop the header and
+     * tag the quoted line with its true author, so the following messages
+     * keep the quoter's side.
      */
     private val quoteHeader = Regex("""^[A-Z][A-Z .]{1,30}\s+\d{1,2}:\d{2}$""")
+    private val timeOnly = Regex("""\d{1,2}:\d{2}(:\d{2})?(\s?[AaPp][Mm])?""")
 
     override fun parse(root: AccessibilityNodeInfo?): String {
         if (root == null) return ""
@@ -227,44 +233,70 @@ class SnapchatParser : ChatParser("com.snapchat.android") {
         // risk eating real messages.
         val title = extractTitle(root)?.trim().orEmpty()
         val titleTokens = title.split(Regex("\\s+")).filter { it.length >= 2 }
-        val isLabelName = { text: String ->
-            text.equals(title, ignoreCase = true) ||
-                titleTokens.any { tok -> text.equals(tok, ignoreCase = true) }
-        }
         val useLabels = title.contains(" ") || title.length >= 4
+        fun authorOf(name: String): String? =
+            if (name.equals("ME", ignoreCase = true)) "USER"
+            else if (useLabels && (name.equals(title, ignoreCase = true) ||
+                    titleTokens.any { tok -> name.equals(tok, ignoreCase = true) })
+            ) "MATCH"
+            else null
+        // Speaker labels stay case-SENSITIVE ("ME" only — a real message
+        // reading exactly "me" must survive); header-name matching above is
+        // case-insensitive since headers render all-caps.
+        fun speakerOfLabel(text: String): String? =
+            if (text == "ME") "USER" else authorOf(text)
 
-        val rows = mutableListOf<Pair<String, String>>()
+        val leaves = collectRawLeaves(root).sortedBy { it.top }.map { it.text }
+        val rows = mutableListOf<String>()
         var speaker: String? = null
-        for (b in collectRawLeaves(root).sortedBy { it.top }) {
-            val text = b.text
-            if (text == "ME") {
-                speaker = "USER"
+        var quoteAuthor: String? = null
+        var i = 0
+        while (i < leaves.size) {
+            val text = leaves[i]
+            val label = speakerOfLabel(text)
+            if (label != null) {
+                // Split quoted-reply header (sender tag directly followed by
+                // a standalone clock time): drop both, tag the next message
+                // with the quoted author. A genuine label is always followed
+                // by its message, never by a bare time (times sit UNDER
+                // messages), so this can't misfire on normal rows.
+                if (i + 1 < leaves.size && timeOnly.matches(leaves[i + 1])) {
+                    quoteAuthor = label
+                    i += 2
+                } else {
+                    speaker = label
+                    // A fresh speaker label ends any pending quote (the quote
+                    // bubble carried no text) — otherwise the tag would leak
+                    // onto this group's first real message.
+                    quoteAuthor = null
+                    i += 1
+                }
                 continue
             }
-            if (useLabels && isLabelName(text)) {
-                speaker = "MATCH"
-                continue
-            }
-            if (isChrome(text)) continue
-            rows.add((speaker ?: "MATCH") to text)
-        }
-
-        val out = mutableListOf<String>()
-        var flipNext = false
-        for ((sp, text) in rows) {
             if (quoteHeader.matches(text)) {
-                flipNext = true
+                val name = text.replace(Regex("""\s+\d{1,2}:\d{2}$"""), "").trim()
+                quoteAuthor = authorOf(name) ?: (speaker ?: "MATCH").let {
+                    if (it == "USER") "MATCH" else "USER"
+                }
+                i += 1
                 continue
             }
-            if (flipNext) {
-                flipNext = false
-                val other = if (sp == "USER") "MATCH" else "USER"
-                out.add("[$other]: (quoted) $text")
-            } else {
-                out.add("[$sp]: $text")
+            // Standalone clock times (message timestamps) are chrome — but
+            // only when NOT in header position (checked above first).
+            if (isChrome(text)) {
+                i += 1
+                continue
             }
+            val quoted = quoteAuthor
+            quoteAuthor = null
+            if (quoted != null) {
+                rows.add("[$quoted]: (quoted) $text")
+            } else {
+                rows.add("[${speaker ?: "MATCH"}]: $text")
+            }
+            i += 1
         }
-        return out.takeLast(maxMessages).joinToString("\n") { it }
+        return rows.takeLast(maxMessages).joinToString("\n")
     }
 }
 
