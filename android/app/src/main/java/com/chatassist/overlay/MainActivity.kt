@@ -107,6 +107,9 @@ class MainActivity : AppCompatActivity() {
         autoPasteSwitch = findViewById(R.id.autoPasteSwitch)
         matchList = findViewById(R.id.matchList)
         matchEmptyHint = findViewById(R.id.matchEmptyHint)
+        findViewById<Button>(R.id.btnCaptureLog).setOnClickListener {
+            startActivity(android.content.Intent(this, CaptureLogActivity::class.java))
+        }
         autoPasteSwitch.isChecked = Prefs.autoPaste(this)
         autoPasteSwitch.setOnCheckedChangeListener { _, checked ->
             Prefs.setAutoPaste(this, checked)

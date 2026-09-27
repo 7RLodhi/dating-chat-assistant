@@ -82,6 +82,28 @@ class OverlayService : Service() {
         super.onCreate()
         ChatBus.setAppContext(this)
         ChatBus.addForegroundListener(foregroundListener)
+        ChatBus.addSnapshotListener(snapshotListener)
+    }
+
+    /**
+     * Auto-refresh on chat switch: a newly published chat reloads the panel
+     * (rows + suggestions) without a manual Refresh. Same-chat updates only
+     * refresh the rows — suggestions wait for an explicit Refresh so every
+     * incoming message doesn't burn an API call.
+     */
+    private var renderedKey: String? = null
+    private var pendingKey: String? = null
+
+    private val snapshotListener: (String) -> Unit = {
+        mainHandler.post {
+            if (panel == null) return@post
+            refreshChatSection()
+            if (loadingSuggestions) {
+                pendingKey = ChatBus.latestKey
+            } else {
+                loadSuggestions()
+            }
+        }
     }
 
     /** Visible if and only if a supported app is in front (and panel closed). */
@@ -708,6 +730,8 @@ class OverlayService : Service() {
         val key = ChatBus.latestKey
         val snapshot = ChatBus.get(key)
         val text = snapshot?.text.orEmpty()
+        renderedKey = key
+        pendingKey = null
         if (text.isBlank()) {
             chatLabel.text = ""
             moodText.text = "No chat text captured yet — open a conversation in a supported dating app."
@@ -717,6 +741,17 @@ class OverlayService : Service() {
         // show opening lines + name puns instead of replies to nothing.
         val opener = !hasMatchContent(text)
         chatLabel.text = ChatBus.labelFor(key, snapshot!!)
+        // Smart refresh: same request as last time → re-render the stored
+        // batch instantly instead of burning another API call.
+        val mode = if (opener) "opener" else "reply"
+        val fingerprint = if (opener) "opener|${snapshot.title.orEmpty()}" else "reply|$text"
+        if (snapshot.suggestMode == mode && snapshot.suggestFor == fingerprint &&
+            snapshot.suggestItems.isNotEmpty()
+        ) {
+            moodText.text = snapshot.suggestMood.ifBlank { "Suggestions ready — tap one to copy." }
+            renderSuggestionCards(list, snapshot.suggestItems)
+            return
+        }
         moodText.text = if (opener) "Thinking of openers…" else "Thinking…"
         list.removeAllViews()
         loadingSuggestions = true
@@ -727,13 +762,13 @@ class OverlayService : Service() {
                 "", tone,
                 mode = "opener",
                 matchName = snapshot.title.orEmpty(),
-                callback = { result -> onSuggestionsLoaded(result, moodText, list) },
+                callback = { result -> onSuggestionsLoaded(result, moodText, list, key, mode, fingerprint) },
             )
         } else {
             ApiClient.fetchSuggestions(
                 Prefs.backendUrl(this),
                 text, tone,
-                callback = { result -> onSuggestionsLoaded(result, moodText, list) },
+                callback = { result -> onSuggestionsLoaded(result, moodText, list, key, mode, fingerprint) },
             )
         }
     }
@@ -742,12 +777,36 @@ class OverlayService : Service() {
         result: Result<SuggestionResult>,
         moodText: TextView,
         list: LinearLayout,
+        key: String,
+        mode: String,
+        fingerprint: String,
     ) {
         loadingSuggestions = false
+        renderedKey = key
         result.fold(
             onSuccess = { r ->
                     moodText.text = r.mood.ifBlank { "Suggestions ready — tap one to copy." }
-                    for (s in r.suggestions.take(5)) {
+                    val items = r.suggestions.take(5)
+                    ChatBus.updateSuggestions(key, mode, fingerprint, r.mood, items)
+                    renderSuggestionCards(list, items)
+                },
+                onFailure = { e ->
+                    moodText.text = "Couldn't load suggestions: ${e.message}"
+                },
+            )
+        // A chat switch arrived mid-flight: serve it now.
+        val pk = pendingKey
+        pendingKey = null
+        if (pk != null && pk != key && panel != null) {
+            refreshChatSection()
+            loadSuggestions()
+        }
+    }
+
+    /** Tappable suggestion cards, shared by fresh and cached batches. */
+    private fun renderSuggestionCards(list: LinearLayout, suggestions: List<String>) {
+        list.removeAllViews()
+        for (s in suggestions.take(5)) {
                         val card = TextView(this).apply {
                             this.text = s
                             textSize = 14f
@@ -779,12 +838,7 @@ class OverlayService : Service() {
                         }
                         list.addView(card)
                     }
-                },
-                onFailure = { e ->
-                    moodText.text = "Couldn't load suggestions: ${e.message}"
-                },
-            )
-        }
+    }
 
     private fun copyToClipboard(text: String) {
         val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
@@ -793,6 +847,7 @@ class OverlayService : Service() {
 
     override fun onDestroy() {
         ChatBus.removeForegroundListener(foregroundListener)
+        ChatBus.removeSnapshotListener(snapshotListener)
         hideTrash()
         bubble?.let { runCatching { windowManager.removeView(it) } }
         panel?.let { runCatching { windowManager.removeView(it) } }

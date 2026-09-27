@@ -24,6 +24,11 @@ object ChatBus {
         val factsText: String? = null,
         /** Hand-added profile details (app screen) the overlay missed. */
         val userNote: String? = null,
+        /** Last suggestion batch + the exact request it answers (smart refresh). */
+        val suggestMode: String? = null,
+        val suggestFor: String? = null,
+        val suggestMood: String = "",
+        val suggestItems: List<String> = emptyList(),
     )
 
     private const val MAX_CHATS = 10
@@ -58,6 +63,21 @@ object ChatBus {
 
     fun removeForegroundListener(listener: (String) -> Unit) {
         foregroundListeners.remove(listener)
+    }
+
+    /**
+     * Fired (with the chat key) whenever a snapshot is actually stored —
+     * drives the overlay's auto-refresh on chat switch. Runs on the
+     * publisher's thread; UI listeners must post to the main thread.
+     */
+    private val snapshotListeners = CopyOnWriteArrayList<(String) -> Unit>()
+
+    fun addSnapshotListener(listener: (String) -> Unit) {
+        snapshotListeners.add(listener)
+    }
+
+    fun removeSnapshotListener(listener: (String) -> Unit) {
+        snapshotListeners.remove(listener)
     }
 
     fun notifyForeground(packageName: String) {
@@ -97,11 +117,15 @@ object ChatBus {
         if (existing != null && existing.text == snapshot.text) return
         if (oldKey != null) snapshots.remove(oldKey)
         snapshots.remove(key)
-        // Preserve hand-added notes and facts across re-captures.
+        // Preserve hand-added notes, facts and suggestions across re-captures.
         val merged = snapshot.copy(
             factsJson = snapshot.factsJson ?: existing?.factsJson,
             factsText = snapshot.factsText ?: existing?.factsText,
             userNote = snapshot.userNote ?: existing?.userNote,
+            suggestMode = snapshot.suggestMode ?: existing?.suggestMode,
+            suggestFor = snapshot.suggestFor ?: existing?.suggestFor,
+            suggestMood = snapshot.suggestMood.ifEmpty { existing?.suggestMood.orEmpty() },
+            suggestItems = snapshot.suggestItems.ifEmpty { existing?.suggestItems.orEmpty() },
         )
         snapshots[key] = merged
         while (snapshots.size > MAX_CHATS) {
@@ -109,6 +133,9 @@ object ChatBus {
         }
         latestKey = key
         persistLocked()
+        for (listener in snapshotListeners) {
+            runCatching { listener(key) }
+        }
     }
 
     @Synchronized
@@ -124,6 +151,19 @@ object ChatBus {
     fun updateFacts(key: String, factsJson: String, factsText: String) {
         val existing = snapshots[key] ?: return
         snapshots[key] = existing.copy(factsJson = factsJson, factsText = factsText)
+        persistLocked()
+    }
+
+    /** Stores a generated suggestion batch so re-Refresh is instant + free. */
+    @Synchronized
+    fun updateSuggestions(key: String, mode: String, forText: String, mood: String, items: List<String>) {
+        val existing = snapshots[key] ?: return
+        snapshots[key] = existing.copy(
+            suggestMode = mode,
+            suggestFor = forText,
+            suggestMood = mood,
+            suggestItems = items,
+        )
         persistLocked()
     }
 
@@ -147,7 +187,11 @@ object ChatBus {
                     .put("at", s.at)
                     .put("factsJson", s.factsJson)
                     .put("factsText", s.factsText)
-                    .put("userNote", s.userNote))
+                    .put("userNote", s.userNote)
+                    .put("suggestMode", s.suggestMode)
+                    .put("suggestFor", s.suggestFor)
+                    .put("suggestMood", s.suggestMood)
+                    .put("suggestItems", org.json.JSONArray(s.suggestItems)))
             }
             ctx.getSharedPreferences(PREFS_FILE, Context.MODE_PRIVATE).edit()
                 .putString(KEY_SNAPSHOTS, root.toString()).apply()
@@ -174,6 +218,14 @@ object ChatBus {
                     factsJson = o.optString("factsJson").takeIf { it.isNotEmpty() },
                     factsText = o.optString("factsText").takeIf { it.isNotEmpty() },
                     userNote = o.optString("userNote").takeIf { it.isNotEmpty() },
+                    suggestMode = o.optString("suggestMode").takeIf { it.isNotEmpty() },
+                    suggestFor = o.optString("suggestFor").takeIf { it.isNotEmpty() },
+                    suggestMood = o.optString("suggestMood").orEmpty(),
+                    suggestItems = (o.optJSONArray("suggestItems")?.let { arr ->
+                        (0 until arr.length()).mapNotNull {
+                            arr.optString(it)?.takeIf { s -> s.isNotEmpty() }
+                        }
+                    }).orEmpty(),
                 )
             }
             // One-time repair for stores written by older builds: merge keys
