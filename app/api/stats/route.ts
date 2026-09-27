@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { getStats } from "@/lib/stats";
 
+// Aggregates live backend data on every hit — must never be statically
+// optimized or edge-cached, or the dashboard freezes on first view.
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   try {
     return NextResponse.json(await getStats());
