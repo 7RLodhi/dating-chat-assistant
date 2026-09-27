@@ -343,7 +343,9 @@ class OverlayService : Service() {
             loadSuggestions()
         }
         setupToneSpinner(panelView)
-        chatExpanded = true
+        // Chat starts collapsed on every open (the live chat is already
+        // visible behind the panel; rows are one tap away if needed).
+        chatExpanded = false
         summaryExpanded = false
         wireChatSection(panelView)
         wireSummarySection(panelView)

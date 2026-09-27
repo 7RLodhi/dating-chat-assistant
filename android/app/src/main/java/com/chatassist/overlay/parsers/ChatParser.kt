@@ -6,8 +6,9 @@ import android.view.accessibility.AccessibilityNodeInfo
 /**
  * Turns an accessibility node tree from a dating-app chat screen into plain
  * conversation text, one message per line. Speaker attribution ([MATCH] /
- * [USER]) is best-effort: left-aligned bubbles are the match, right-aligned
- * are you. The overlay UI already lets the user swap a mislabeled message.
+ * [USER]) is best-effort: see each per-app subclass for its rule (position
+ * vs sender labels). Anything uncertain keeps its best guess — the overlay
+ * panel shows the captured rows so mislabels are visible, not silent.
  *
  * Per-app subclasses only tweak what the generic walker can't know (e.g.
  * package-specific chrome to skip). Add a new dating app by subclassing and
@@ -202,6 +203,12 @@ class SnapchatParser : ChatParser("com.snapchat.android") {
     // "ME" is consumed as a speaker label by parse() below (never emitted),
     // so it stays out of the generic skip set on purpose.
     override val skipExactCaseSensitive: Set<String> = emptySet()
+    override val skipPatterns = listOf(
+        // Message clock times ("11:04", "11:07 PM") sit under every bubble —
+        // without this they become phantom message rows (and get mailed to
+        // the LLM as things somebody "said").
+        Regex("""\d{1,2}:\d{2}(:\d{2})?(\s?[AaPp][Mm])?"""),
+    )
 
     /**
      * Quoted replies ("SONAM THAKUR 21:20" header + quoted text): drop the
