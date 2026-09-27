@@ -31,6 +31,7 @@ class ChatReaderService : AccessibilityService() {
 
     override fun onServiceConnected() {
         // Config comes from res/xml/accessibility_service_config.xml.
+        ChatBus.setAppContext(this)
         ChatBus.setPasteHandler(::handlePasteRequest)
     }
 

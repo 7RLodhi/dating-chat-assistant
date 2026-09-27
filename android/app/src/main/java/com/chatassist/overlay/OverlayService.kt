@@ -69,6 +69,7 @@ class OverlayService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        ChatBus.setAppContext(this)
         ChatBus.addForegroundListener(foregroundListener)
     }
 

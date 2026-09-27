@@ -26,6 +26,40 @@
             android:textSize="14sp" />
 
         <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="Matches"
+            android:textColor="@color/ink"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/matchEmptyHint"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="No chats captured yet — open a conversation in a supported app and it appears here."
+            android:textColor="#6B7280"
+            android:textSize="13sp" />
+
+        <LinearLayout
+            android:id="@+id/matchList"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:orientation="vertical" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="Setup"
+            android:textColor="@color/ink"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <TextView
             android:id="@+id/statusOverlay"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"

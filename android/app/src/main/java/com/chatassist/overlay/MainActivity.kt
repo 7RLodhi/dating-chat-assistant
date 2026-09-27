@@ -11,10 +11,13 @@ import android.os.Bundle
 import android.provider.Settings
 import android.text.TextUtils
 import android.widget.Button
+import android.widget.LinearLayout
 import android.widget.RadioButton
 import android.widget.RadioGroup
 import android.widget.SeekBar
 import android.widget.TextView
+import android.view.View
+import org.json.JSONObject
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -43,6 +46,13 @@ class MainActivity : AppCompatActivity() {
     private lateinit var panelAlphaSeek: SeekBar
     private lateinit var panelAlphaValue: TextView
     private lateinit var autoPasteSwitch: androidx.appcompat.widget.SwitchCompat
+    private lateinit var matchList: LinearLayout
+    private lateinit var matchEmptyHint: TextView
+
+    /** Keys with their detail section expanded. Survives re-renders. */
+    private val expandedKeys = mutableSetOf<String>()
+    /** Keys with a summary fetch in flight (double-tap guard). */
+    private val loadingFactsKeys = mutableSetOf<String>()
 
     private val pickImage = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri == null) {
@@ -85,6 +95,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+        ChatBus.setAppContext(this)
 
         statusOverlay = findViewById(R.id.statusOverlay)
         statusA11y = findViewById(R.id.statusA11y)
@@ -99,6 +110,8 @@ class MainActivity : AppCompatActivity() {
         panelAlphaSeek = findViewById(R.id.panelAlphaSeek)
         panelAlphaValue = findViewById(R.id.panelAlphaValue)
         autoPasteSwitch = findViewById(R.id.autoPasteSwitch)
+        matchList = findViewById(R.id.matchList)
+        matchEmptyHint = findViewById(R.id.matchEmptyHint)
         autoPasteSwitch.isChecked = Prefs.autoPaste(this)
         autoPasteSwitch.setOnCheckedChangeListener { _, checked ->
             Prefs.setAutoPaste(this, checked)
@@ -191,6 +204,218 @@ class MainActivity : AppCompatActivity() {
         refreshStatus()
         syncAppearanceUi()
         updateStartButton()
+        ChatBus.loadFromPrefs()
+        renderMatchList()
+    }
+
+    /**
+     * Match list, synced with the overlay panel through [ChatBus]: same chat
+     * snapshots, same fact sheets. A summary fetched here (or in the panel)
+     * is stored on the shared snapshot, so both places show it.
+     */
+    private fun renderMatchList() {
+        matchList.removeAllViews()
+        val chats = ChatBus.all()
+        matchEmptyHint.visibility = if (chats.isEmpty()) View.VISIBLE else View.GONE
+        for ((key, snapshot) in chats) {
+            matchList.addView(buildMatchCard(key, snapshot))
+        }
+    }
+
+    private fun buildMatchCard(key: String, snapshot: ChatBus.ChatSnapshot): View {
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(16, 12, 16, 12)
+        }
+        val header = TextView(this).apply {
+            text = ChatBus.labelFor(key, snapshot)
+            textSize = 16f
+            setTextColor(getColor(R.color.ink))
+        }
+        header.setTypeface(header.typeface, android.graphics.Typeface.BOLD)
+        val lines = snapshot.text.lineSequence().map { it.trim() }
+            .filter { it.isNotEmpty() }.toList()
+        val preview = TextView(this).apply {
+            text = lines.lastOrNull()?.let { stripSpeaker(it) } ?: "No messages captured."
+            textSize = 13f
+            setTextColor(getColor(android.R.color.darker_gray))
+            maxLines = 2
+        }
+        val summarySnippet = TextView(this).apply {
+            textSize = 13f
+            setTextColor(getColor(android.R.color.darker_gray))
+        }
+        val detail = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = if (key in expandedKeys) View.VISIBLE else View.GONE
+        }
+        val toggleRowHint = TextView(this).apply {
+            text = if (key in expandedKeys) "Tap to collapse ▲" else "Tap for chat + summary ▼"
+            textSize = 12f
+            setTextColor(getColor(android.R.color.darker_gray))
+        }
+
+        fun refreshSnippet() {
+            val raw = ChatBus.get(key)?.factsJson
+            val summary = raw?.let { runCatching { ApiClient.buildFactSheet(JSONObject(it)).summary }.getOrNull() }
+            summarySnippet.text =
+                if (summary.isNullOrBlank()) "📋 No summary yet — tap to expand."
+                else "📋 $summary"
+        }
+        refreshSnippet()
+
+        if (key in expandedKeys) renderMatchDetail(detail, key)
+
+        val toggle = {
+            if (key in expandedKeys) {
+                expandedKeys.remove(key)
+                detail.visibility = View.GONE
+                detail.removeAllViews()
+                toggleRowHint.text = "Tap for chat + summary ▼"
+            } else {
+                expandedKeys.add(key)
+                detail.visibility = View.VISIBLE
+                renderMatchDetail(detail, key)
+                toggleRowHint.text = "Tap to collapse ▲"
+            }
+        }
+        card.setOnClickListener { toggle() }
+        card.addView(header)
+        card.addView(preview)
+        card.addView(summarySnippet)
+        card.addView(toggleRowHint)
+        card.addView(detail)
+        return card
+    }
+
+    private fun stripSpeaker(line: String): String {
+        val upper = line.uppercase()
+        if (upper.startsWith("[USER]") || upper.startsWith("[MATCH]")) {
+            return line.substringAfter("]:", line).trim()
+        }
+        return line
+    }
+
+    private fun renderMatchDetail(detail: LinearLayout, key: String) {
+        detail.removeAllViews()
+        val snapshot = ChatBus.get(key) ?: return
+        detail.addView(sectionLabel("💬 Chat"))
+        val lines = snapshot.text.lineSequence().map { it.trim() }
+            .filter { it.isNotEmpty() }.toList().takeLast(30)
+        if (lines.isEmpty()) {
+            detail.addView(smallGrey("No chat text captured yet."))
+        } else {
+            for (line in lines) {
+                val upper = line.uppercase()
+                val isUser = upper.startsWith("[USER]")
+                val isMatch = upper.startsWith("[MATCH]")
+                val body = if (isUser || isMatch) line.substringAfter("]:", line).trim() else line
+                if (body.isEmpty()) continue
+                detail.addView(TextView(this).apply {
+                    text = if (isUser) "You: $body" else "Match: $body"
+                    textSize = 13f
+                    setPadding(4, 2, 4, 2)
+                    setTextColor(
+                        if (isUser) getColor(android.R.color.holo_blue_dark)
+                        else getColor(android.R.color.black)
+                    )
+                })
+            }
+        }
+        detail.addView(sectionLabel("📋 Summary"))
+        val summaryBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        detail.addView(summaryBox)
+        renderStoredSummaryInto(summaryBox, key)
+        detail.addView(Button(this).apply {
+            text = "Load summary"
+            setOnClickListener { loadSummaryFor(key, summaryBox) }
+        })
+    }
+
+    private fun sectionLabel(text: String): TextView = TextView(this).apply {
+        this.text = text
+        textSize = 14f
+        setTextColor(getColor(R.color.ink))
+        setPadding(0, 8, 0, 2)
+    }.also { it.setTypeface(it.typeface, android.graphics.Typeface.BOLD) }
+
+    private fun smallGrey(text: String): TextView = TextView(this).apply {
+        this.text = text
+        textSize = 12f
+        setTextColor(getColor(android.R.color.darker_gray))
+    }
+
+    private fun renderStoredSummaryInto(box: LinearLayout, key: String) {
+        box.removeAllViews()
+        val raw = ChatBus.get(key)?.factsJson
+        if (raw.isNullOrBlank()) {
+            box.addView(smallGrey("No summary yet — tap Load summary. Uses the same learned sheet as the overlay panel."))
+            return
+        }
+        val sheet = runCatching { ApiClient.buildFactSheet(JSONObject(raw)) }.getOrNull()
+        if (sheet == null || (sheet.summary.isBlank() && sheet.rows.isEmpty())) {
+            box.addView(smallGrey("Saved summary looks empty — tap Load summary to retry."))
+            return
+        }
+        if (sheet.summary.isNotBlank()) {
+            box.addView(TextView(this).apply {
+                text = sheet.summary
+                textSize = 13f
+                setTextColor(getColor(android.R.color.black))
+                setPadding(0, 0, 0, 6)
+            })
+        }
+        for ((label, value) in sheet.rows) {
+            box.addView(TextView(this).apply {
+                text = label
+                textSize = 11f
+                setTextColor(getColor(android.R.color.darker_gray))
+            })
+            box.addView(TextView(this).apply {
+                text = value
+                textSize = 13f
+                setTextColor(getColor(android.R.color.black))
+                setPadding(0, 0, 0, 4)
+            })
+        }
+    }
+
+    /** Fetches the learned sheet and stores it on the shared snapshot — the panel reads the same data. */
+    private fun loadSummaryFor(key: String, box: LinearLayout) {
+        if (key in loadingFactsKeys) return
+        val snapshot = ChatBus.get(key)
+        val text = snapshot?.text.orEmpty()
+        if (text.isBlank()) {
+            box.removeAllViews()
+            box.addView(smallGrey("No chat text to learn from yet."))
+            return
+        }
+        val stored = snapshot?.factsJson
+        if (!stored.isNullOrBlank() && snapshot?.factsText == text) {
+            renderStoredSummaryInto(box, key)
+            renderMatchList()
+            return
+        }
+        loadingFactsKeys.add(key)
+        box.removeAllViews()
+        box.addView(smallGrey("Learning summary…"))
+        val previous = stored?.let { runCatching { JSONObject(it) }.getOrNull() }
+        ApiClient.fetchFacts(Prefs.backendUrl(this), text, previous) { result ->
+            loadingFactsKeys.remove(key)
+            result.fold(
+                onSuccess = { (json, _) ->
+                    ChatBus.updateFacts(key, json.toString(), text)
+                    if (!isFinishing && !isDestroyed) {
+                        renderStoredSummaryInto(box, key)
+                        renderMatchList()
+                    }
+                },
+                onFailure = { e ->
+                    box.removeAllViews()
+                    box.addView(smallGrey("Couldn't load summary: ${e.message} — retry with Load summary."))
+                },
+            )
+        }
     }
 
     private fun appVersionName(): String {
