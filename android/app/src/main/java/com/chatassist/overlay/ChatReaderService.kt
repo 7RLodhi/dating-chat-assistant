@@ -28,6 +28,9 @@ class ChatReaderService : AccessibilityService() {
     }
 
     private var lastPublishAt = 0L
+    /** Set while a debounced event awaits its delayed retry (no pile-up). */
+    private var retryPending = false
+    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
     /**
      * Battery diet: full parses walk the whole tree with a bounds IPC per
@@ -68,11 +71,24 @@ class ChatReaderService : AccessibilityService() {
         // Config comes from res/xml/accessibility_service_config.xml.
         ChatBus.setAppContext(this)
         ChatBus.setPasteHandler(::handlePasteRequest)
+        // Panel Refresh bypasses debounce/hash and captures right now.
+        ChatBus.setCaptureHandler(::handleCaptureRequest)
     }
 
     override fun onDestroy() {
         ChatBus.setPasteHandler(null)
+        ChatBus.setCaptureHandler(null)
         super.onDestroy()
+    }
+
+    /**
+     * Force-capture for the panel's Refresh button. Runs on the UI thread
+     * (one full tree walk per tap — acceptable for an explicit action).
+     */
+    private fun handleCaptureRequest(): Boolean {
+        val fg = ChatBus.foregroundPackage
+        if (fg !in ChatBus.SUPPORTED_PACKAGES) return false
+        return publishCurrent(fg, force = true)
     }
 
     /**
@@ -156,30 +172,55 @@ class ChatReaderService : AccessibilityService() {
             event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
         ) return
 
-        val now = System.currentTimeMillis()
-        if (now - lastPublishAt < DEBOUNCE_MS) return
-        lastPublishAt = now
+        publishCurrent(pkg)
+    }
+
+    /**
+     * Reads the current window and publishes it as the latest snapshot.
+     * Normally gated (debounce + tree hash); `force` skips both for an
+     * explicit Refresh. Returns true when a snapshot was stored.
+     */
+    private fun publishCurrent(pkg: String, force: Boolean = false): Boolean {
+        if (!force) {
+            val now = System.currentTimeMillis()
+            if (now - lastPublishAt < DEBOUNCE_MS) {
+                // A chat switch landing inside the debounce window would
+                // otherwise be lost: a settled screen fires nothing more,
+                // stranding the panel on the previous chat forever. Retry
+                // once, reading the CURRENT window (not this stale event).
+                if (!retryPending) {
+                    retryPending = true
+                    mainHandler.postDelayed({
+                        retryPending = false
+                        val fg = ChatBus.foregroundPackage
+                        if (fg in ChatBus.SUPPORTED_PACKAGES) publishCurrent(fg)
+                    }, DEBOUNCE_MS + 200)
+                }
+                return false
+            }
+            lastPublishAt = now
+        }
 
         try {
             // Same helper as tap-to-paste: the focused window may be the
             // keyboard or a popup, so scan for the dating app's window and
             // require it to match the event's package (never our panel).
-            val root = findSupportedAppRoot() ?: return
-            if (root.packageName?.toString() != pkg) return
+            val root = findSupportedAppRoot() ?: return false
+            if (root.packageName?.toString() != pkg) return false
             val parser = ChatParser.forPackage(pkg)
             // Hash gate before the expensive parse (see cheapTreeHash).
             val treeHash = cheapTreeHash(root)
-            if (lastTreeHash[pkg] == treeHash) return
+            if (!force && lastTreeHash[pkg] == treeHash) return false
             lastTreeHash[pkg] = treeHash
             // Only real conversation screens: a chat input must be on screen
             // (kills chat-lists, Status/Calls tabs, feeds, contact info…),
             // and list-screen markers are double-checked after parsing.
-            if (!parser.hasChatInput(root)) return
+            if (!parser.hasChatInput(root)) return false
             val text = parser.parse(root)
             if (text.isNotBlank()) {
                 val title = parser.extractTitle(root)
                     ?.replace("|", " ")?.trim()?.take(40)?.takeIf { it.isNotBlank() }
-                if (parser.isListScreen(title, text)) return
+                if (parser.isListScreen(title, text)) return false
                 val key = if (title != null) "$pkg|$title" else pkg
                 ChatBus.publish(
                     key,
@@ -190,11 +231,13 @@ class ChatReaderService : AccessibilityService() {
                         at = System.currentTimeMillis(),
                     ),
                 )
+                return true
             }
         } catch (_: Exception) {
             // A dating-app UI update must never crash the service.
             // Next event will retry automatically.
         }
+        return false
     }
 
     override fun onInterrupt() {

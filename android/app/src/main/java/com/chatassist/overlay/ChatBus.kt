@@ -371,6 +371,28 @@ object ChatBus {
         }
     }
 
+    /**
+     * Force-capture plumbing (same pattern as paste): the panel's Refresh
+     * asks the reader to capture right now, bypassing debounce/hash, so a
+     * missed chat switch is one tap away instead of stuck forever.
+     */
+    private var captureHandler: (() -> Boolean)? = null
+
+    @Synchronized
+    fun setCaptureHandler(handler: (() -> Boolean)?) {
+        captureHandler = handler
+    }
+
+    fun requestCapture(): Boolean {
+        val handler = synchronized(this) { captureHandler }
+        if (handler == null) return false
+        return try {
+            handler()
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     fun labelFor(key: String, snapshot: ChatSnapshot): String {
         val app = appLabel(snapshot.appPackage)
         val title = snapshot.title?.takeIf { it.isNotBlank() }

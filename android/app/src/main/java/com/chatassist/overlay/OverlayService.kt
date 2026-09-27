@@ -527,6 +527,10 @@ class OverlayService : Service() {
         panelView.alpha = Prefs.panelAlphaPct(this) / 100f
         panelView.findViewById<Button>(R.id.btnClose).setOnClickListener { togglePanel() }
         panelView.findViewById<Button>(R.id.btnRefresh).setOnClickListener {
+            // Re-capture first: if the reader missed this chat (debounced
+            // switch, settled screen), Refresh heals it instead of
+            // re-showing the previous match's data.
+            ChatBus.requestCapture()
             refreshChatSection()
             loadSuggestions()
         }
