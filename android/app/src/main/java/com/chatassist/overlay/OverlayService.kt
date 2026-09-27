@@ -304,8 +304,15 @@ class OverlayService : Service() {
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            // Focusable so the panel's buttons receive taps.
-            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+            // NOT_FOCUSABLE is load-bearing: the panel must never steal input
+            // focus, or (a) the keyboard refuses to open for the app behind,
+            // (b) back button/gesture goes to the panel instead of the app,
+            // and (c) rootInActiveWindow becomes our own panel so tap-to-paste
+            // can't find the chat box. Taps on buttons/cards/spinner still
+            // work — touch delivery doesn't need focus, only key events/IME
+            // do, and the panel has no text input.
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT,
         ).apply {
             // Top 60% of the screen by default: anchored near the top, capped

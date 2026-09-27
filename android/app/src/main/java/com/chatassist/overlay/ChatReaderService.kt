@@ -48,12 +48,10 @@ class ChatReaderService : AccessibilityService() {
      */
     private fun handlePasteRequest(text: String, callback: (Boolean) -> Unit) {
         try {
-            val root = rootInActiveWindow ?: run { callback(false); return }
-            val pkg = root.packageName?.toString() ?: run { callback(false); return }
-            if (pkg !in ChatBus.SUPPORTED_PACKAGES) {
-                callback(false)
-                return
-            }
+            // Never trust rootInActiveWindow alone: whatever holds focus
+            // (keyboard, a popup, our own bubble) may own the active window.
+            // Scan all windows for a supported dating app instead.
+            val root = findSupportedAppRoot() ?: run { callback(false); return }
             val field = findChatInput(root) ?: run { callback(false); return }
             field.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
             val args = Bundle().apply {
@@ -66,6 +64,27 @@ class ChatReaderService : AccessibilityService() {
         } catch (_: Exception) {
             callback(false)
         }
+    }
+
+    /**
+     * Returns the root node of the frontmost supported dating-app window, or
+     * null when none is on screen. Refuses anything else, so a tap can never
+     * land text in a banking app, settings screen, or our own overlay.
+     */
+    private fun findSupportedAppRoot(): AccessibilityNodeInfo? {
+        // In practice at most one supported dating app is ever on screen
+        // (our own overlay is a different package and never qualifies), so
+        // the first match wins. Split-screen with two dating apps would paste
+        // into whichever the system lists first — acceptable edge case.
+        runCatching { windows }.getOrNull()?.forEach { window ->
+            val root = runCatching { window?.root }.getOrNull() ?: return@forEach
+            if (root.packageName?.toString() in ChatBus.SUPPORTED_PACKAGES) {
+                return root
+            }
+        }
+        // Fallback: single active window, still package-gated.
+        val root = rootInActiveWindow ?: return null
+        return if (root.packageName?.toString() in ChatBus.SUPPORTED_PACKAGES) root else null
     }
 
     /**
@@ -107,13 +126,10 @@ class ChatReaderService : AccessibilityService() {
         lastPublishAt = now
 
         try {
-            val root = rootInActiveWindow ?: return
-            // The overlay panel is focusable (its buttons need taps), so when
-            // it is open the "active window" can be OUR panel, not the dating
-            // app — parsing it would ingest our own suggestion cards as chat
-            // (a feedback loop: moods summarizing "multiple opening
-            // questions", phantom phrases and invented cities in replies).
-            // Only ever parse the window belonging to the event's package.
+            // Same helper as tap-to-paste: the focused window may be the
+            // keyboard or a popup, so scan for the dating app's window and
+            // require it to match the event's package (never our panel).
+            val root = findSupportedAppRoot() ?: return
             if (root.packageName?.toString() != pkg) return
             val parser = ChatParser.forPackage(pkg)
             val text = parser.parse(root)
