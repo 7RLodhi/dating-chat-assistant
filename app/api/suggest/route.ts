@@ -7,12 +7,14 @@ import {
   NAME_PUN_SYSTEM_PROMPT,
   REPLY_JSON_SCHEMA,
   SYSTEM_PROMPT,
+  buildGenderCorrection,
   buildNamePunPrompt,
   buildOpenerUserPrompt,
   buildRegisterCorrection,
   buildReplyUserPrompt,
   buildVerbCorrection,
   detectHindiRegister,
+  violatesGender,
   violatesRegister,
   violatesVerbForm,
 } from "@/lib/prompts";
@@ -35,6 +37,8 @@ export async function POST(req: NextRequest) {
   }
 
   const { mode, tone, goal, extraContext, styleExamples, viaScreenshot, matchName, tasteProfile } = body;
+  const userGender =
+    body.userGender === "male" || body.userGender === "female" ? body.userGender : undefined;
   const language: Language = body.language ?? "auto";
 
   if (mode !== "reply" && mode !== "opener") {
@@ -119,8 +123,9 @@ export async function POST(req: NextRequest) {
           styleExamples,
           language,
           tasteProfile,
+          userGender,
         })
-      : buildOpenerUserPrompt({ profileText: textField, tone, goal, styleExamples, language, namePunHint, tasteProfile });
+      : buildOpenerUserPrompt({ profileText: textField, tone, goal, styleExamples, language, namePunHint, tasteProfile, userGender });
 
   try {
     const schema = mode === "reply" ? REPLY_JSON_SCHEMA : OPENER_JSON_SCHEMA;
@@ -131,16 +136,20 @@ export async function POST(req: NextRequest) {
     });
 
     // Hard guards for Hindi/Hinglish grammar (a prompt rule alone still
-    // slips): drop suggestions with the wrong pronoun register or with
-    // ungrammatical perfect+hoon verbs ("dekha hoon"); if fewer than 3
-    // survive, retry once with explicit corrections and keep the better of
-    // the two attempts.
+    // slips): drop suggestions with the wrong pronoun register, with
+    // ungrammatical perfect+hoon verbs ("dekha hoon"), or with verb forms of
+    // the wrong gender for the declared user ("me soch rhi hu" from a male
+    // user mirroring his match); if fewer than 3 survive, retry once with
+    // explicit corrections and keep the better of the two attempts.
     const needsHindiGuard = mode === "reply" && language !== "english";
     const register = needsHindiGuard ? detectHindiRegister(textField) : null;
     if (needsHindiGuard && Array.isArray(result.suggestions)) {
       const keep = (r: SuggestResponse) =>
         (r.suggestions ?? []).filter(
-          (s) => !violatesRegister(s.text, register) && !violatesVerbForm(s.text)
+          (s) =>
+            !violatesRegister(s.text, register) &&
+            !violatesVerbForm(s.text) &&
+            !violatesGender(s.text, userGender)
         );
       let kept = keep(result);
       if (kept.length < 3) {
@@ -150,7 +159,8 @@ export async function POST(req: NextRequest) {
             userPrompt:
               userPrompt +
               (register ? buildRegisterCorrection(register) : "") +
-              buildVerbCorrection(),
+              buildVerbCorrection() +
+              (userGender ? buildGenderCorrection(userGender) : ""),
             schema,
           });
           const retryKept = keep(retry);

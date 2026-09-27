@@ -114,6 +114,20 @@ object Prefs {
             .putString(KEY_CUSTOM_ICON_URI, uri).apply()
     }
 
+    // Declared user gender ("male" | "female" | "unspecified"): drives Hindi
+    // verb agreement for the user's own lines. Unspecified = old behavior.
+    private const val KEY_USER_GENDER = "user_gender"
+
+    fun userGender(ctx: Context): String =
+        ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            .getString(KEY_USER_GENDER, "unspecified") ?: "unspecified"
+
+    fun setUserGender(ctx: Context, gender: String) {
+        val value = if (gender == "male" || gender == "female") gender else "unspecified"
+        ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+            .putString(KEY_USER_GENDER, value).apply()
+    }
+
     // ---- Learned taste (mirrors webapp/lib/tasteProfile.ts exactly) ----
     // 👍/👎 votes on suggestion cards crystallize into tone affinity, length
     // preference and emoji appetite, sent as LEARNED TASTE with every

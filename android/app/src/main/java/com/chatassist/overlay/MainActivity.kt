@@ -114,6 +114,22 @@ class MainActivity : AppCompatActivity() {
         autoPasteSwitch.setOnCheckedChangeListener { _, checked ->
             Prefs.setAutoPaste(this, checked)
         }
+        val genderGroup: RadioGroup = findViewById(R.id.genderGroup)
+        when (Prefs.userGender(this)) {
+            "male" -> genderGroup.check(R.id.radioMale)
+            "female" -> genderGroup.check(R.id.radioFemale)
+            else -> genderGroup.check(R.id.radioGenderSkip)
+        }
+        genderGroup.setOnCheckedChangeListener { _, checkedId ->
+            Prefs.setUserGender(
+                this,
+                when (checkedId) {
+                    R.id.radioMale -> "male"
+                    R.id.radioFemale -> "female"
+                    else -> "unspecified"
+                },
+            )
+        }
 
         versionFooter.text = "v${appVersionName()} (${appVersionCode()})"
         syncAppearanceUi()

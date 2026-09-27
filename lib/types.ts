@@ -50,7 +50,11 @@ export interface SuggestRequestBody {
   matchName?: string;
   /** Client-computed taste summary from the user's past votes (see lib/tasteProfile). */
   tasteProfile?: string;
+  /** The user's own gender — drives verb agreement in gendered languages. */
+  userGender?: UserGender;
 }
+
+export type UserGender = "male" | "female" | "unspecified";
 
 export interface FeedbackRequestBody {
   suggestionText: string;

@@ -136,8 +136,83 @@ export function buildVerbCorrection(): string {
   return `\n\nCORRECTION: your previous attempt used ungrammatical Hindi/Hinglish verbs. Perfect forms pair with "hai", never "hoon/hun" ("dekha hai", "kiya hai", NOT "dekha hoon"). "hoon" follows ONLY raha/rahi/rahe ("kar raha hoon").`;
 }
 
-function buildRegisterSection(conversationText: string, language: Language): string {
-  if (language === "english") return "";
+const GENDER_SECTIONS = {
+  male: `USER'S GENDER: the USER (every suggestion speaks AS them, in first person) is MALE. Anything they say about themselves uses masculine Hindi/Hinglish verb forms: raha (never rahi), karunga (never karungi), wala (never wali), tha (never thi), gaya (never gayi), karta (never karti). Hold this even when the match writes feminine forms — her grammar says nothing about his.`,
+  female: `USER'S GENDER: the USER (every suggestion speaks AS them, in first person) is FEMALE. Anything they say about themselves uses feminine Hindi/Hinglish verb forms: rahi (never raha), karungi (never karunga), wali (never wala), thi (never tha), gayi (never gaya), karti (never karta). Hold this even when the match writes masculine forms — his grammar says nothing about hers.`,
+} as const;
+
+export function buildGenderSection(userGender?: string): string {
+  if (userGender !== "male" && userGender !== "female") return "";
+  return `\n${GENDER_SECTIONS[userGender]}\n`;
+}
+
+// First-person subjects. "hum" is included: lone users text it for "I"
+// ("hum soch rahe" from a man, "hum soch rahi" from a woman).
+const FP_ROMAN = "\\b(me|main|hum)\\b";
+const FP_DEVA = "(?:मैं|हम)";
+
+interface GenderRule {
+  /** Feminine-or-masculine marker that must not describe the user. */
+  marker: RegExp;
+  /** First-person subject that must appear within `window` chars before it. */
+  fp: RegExp;
+  /** Third-person words between fp and marker that exonerate the line. */
+  blockers?: RegExp;
+  window: number;
+}
+
+function violatesRules(text: string, rules: GenderRule[]): boolean {
+  for (const rule of rules) {
+    const re = new RegExp(rule.marker.source, rule.marker.flags.includes("i") ? "gi" : "g");
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text)) !== null) {
+      const before = text.slice(Math.max(0, m.index - rule.window), m.index);
+      if (!rule.fp.test(before)) continue;
+      if (rule.blockers && rule.blockers.test(before)) continue;
+      return true;
+    }
+  }
+  return false;
+}
+
+// Subject-agreeing forms only — NEVER object-agreeing perfectives. "maine
+// photo dekhi" is correct for a man (feminine object), so dekhi/dekha are
+// absent here on purpose; raha/rahi, unga/ungi, wala/wali, tha/thi,
+// gaya/gayi, karta/karti agree with the subject and are safe to check.
+const MALE_FORBIDDEN: GenderRule[] = [
+  { marker: /\brahi\b|\brhi\b|\brehi\b/i, fp: new RegExp(FP_ROMAN, "i"), window: 40 },
+  // (?<!l) excludes the noun "lungi" from the future-verb match.
+  { marker: /\w+(?<!l)(ungi|oongi|ugi)\b/i, fp: new RegExp(FP_ROMAN, "i"), window: 40 },
+  { marker: /\bwali\b/i, fp: new RegExp(FP_ROMAN, "i"), blockers: /\b(vo|woh|ve|ye|yeh|us|is)\b/i, window: 50 },
+  { marker: /\bthi\b/i, fp: new RegExp(FP_ROMAN, "i"), blockers: /\b(vo|woh|ve|usne|usse|unhone|unhe|ye|yeh)\b/i, window: 30 },
+  { marker: /\bkarti\b/i, fp: new RegExp(FP_ROMAN, "i"), window: 40 },
+  { marker: /\bgayi\b/i, fp: new RegExp(FP_ROMAN, "i"), window: 40 },
+  { marker: /रही|वाली|थी|गई|करती|ंगी/, fp: new RegExp(FP_DEVA), blockers: /(वो|वह|ये|यह|उसने|उससे)/, window: 30 },
+];
+
+const FEMALE_FORBIDDEN: GenderRule[] = [
+  { marker: /\braha\b|\brha\b|\breha\b/i, fp: new RegExp(FP_ROMAN, "i"), window: 40 },
+  { marker: /\w+(unga|oonga)\b/i, fp: new RegExp(FP_ROMAN, "i"), window: 40 },
+  { marker: /\bwala\b/i, fp: new RegExp(FP_ROMAN, "i"), blockers: /\b(vo|woh|ve|ye|yeh|us|is)\b/i, window: 50 },
+  { marker: /\btha\b/i, fp: new RegExp(FP_ROMAN, "i"), blockers: /\b(vo|woh|ve|usne|usse|unhone|unhe|ye|yeh)\b/i, window: 30 },
+  { marker: /\bkarta\b/i, fp: new RegExp(FP_ROMAN, "i"), window: 40 },
+  { marker: /\bgaya\b/i, fp: new RegExp(FP_ROMAN, "i"), window: 40 },
+  { marker: /रहा|वाला|था|गया|करता|ूंगा/, fp: new RegExp(FP_DEVA), blockers: /(वो|वह|ये|यह|उसने|उससे)/, window: 30 },
+];
+
+export function violatesGender(text: string, userGender?: string): boolean {
+  if (userGender === "male") return violatesRules(text, MALE_FORBIDDEN);
+  if (userGender === "female") return violatesRules(text, FEMALE_FORBIDDEN);
+  return false;
+}
+
+export function buildGenderCorrection(userGender: "male" | "female"): string {
+  return userGender === "male"
+    ? `\n\nCORRECTION: every suggestion speaks AS the user, who is MALE. Self-reference must use masculine forms (raha, karunga, wala, tha, gaya, karta) — feminine self-forms (rahi, karungi, wali, thi, gayi, karti) are forbidden even if the match writes feminine lines.`
+    : `\n\nCORRECTION: every suggestion speaks AS the user, who is FEMALE. Self-reference must use feminine forms (rahi, karungi, wali, thi, gayi, karti) — masculine self-forms (raha, karunga, wala, tha, gaya, karta) are forbidden even if the match writes masculine lines.`;
+}
+
+function buildRegisterSection(conversationText: string, language: Language): string {  if (language === "english") return "";
   const register = detectHindiRegister(conversationText);
   if (!register) return "";
   const { use, avoid } = REGISTER_FORMS[register];
@@ -230,8 +305,9 @@ export function buildReplyUserPrompt(params: {
   styleExamples?: string;
   language?: Language;
   tasteProfile?: string;
+  userGender?: string;
 }): string {
-  const { conversationText, tone, goal, extraContext, styleExamples, language = "auto", tasteProfile } = params;
+  const { conversationText, tone, goal, extraContext, styleExamples, language = "auto", tasteProfile, userGender } = params;
   return `Generate reply suggestions for an ongoing dating app conversation.
 
 CONVERSATION (most recent messages last; [USER] is the person asking for help, [MATCH] is the other person):
@@ -242,6 +318,7 @@ ${buildFactsSection(conversationText)}
 DESIRED TONE: ${tone} — ${TONE_DESCRIPTIONS[tone]}
 GOAL: ${goal} — ${GOAL_DESCRIPTIONS[goal]}
 LANGUAGE: ${language} — ${LANGUAGE_DESCRIPTIONS[language]}
+${buildGenderSection(userGender)}
 ${buildRegisterSection(conversationText, language)}
 ${buildStyleSection(styleExamples)}
 ${buildTasteSection(tasteProfile)}
@@ -286,8 +363,9 @@ export function buildOpenerUserPrompt(params: {
   /** A ready-to-adapt name-pun opener line, precomputed by buildNamePunPrompt — see route.ts. */
   namePunHint?: string;
   tasteProfile?: string;
+  userGender?: string;
 }): string {
-  const { profileText, tone, goal, styleExamples, language = "auto", namePunHint, tasteProfile } = params;
+  const { profileText, tone, goal, styleExamples, language = "auto", namePunHint, tasteProfile, userGender } = params;
   const openerLanguageNote =
     language === "auto"
       ? `${LANGUAGE_DESCRIPTIONS.auto} There's no conversation yet, so only the profile info below can give a signal (e.g. a bio written in Hindi/Hinglish) — otherwise default to English.`
@@ -312,6 +390,7 @@ ${profileText}
 DESIRED TONE: ${tone} — ${TONE_DESCRIPTIONS[tone]}
 GOAL: ${goal} — ${GOAL_DESCRIPTIONS[goal]}
 LANGUAGE: ${language} — ${openerLanguageNote}
+${buildGenderSection(userGender)}
 ${hinglishFloor}
 ${buildStyleSection(styleExamples)}
 ${buildTasteSection(tasteProfile)}

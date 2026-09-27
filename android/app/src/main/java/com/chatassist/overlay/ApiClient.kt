@@ -44,6 +44,7 @@ object ApiClient {
         matchName: String = "",
         callback: (Result<SuggestionResult>) -> Unit,
         tasteProfile: String = "",
+        userGender: String = "",
     ) {
         Thread {
             try {
@@ -56,6 +57,7 @@ object ApiClient {
                     .put("profileText", profileText)
                     .put("matchName", matchName)
                     .put("tasteProfile", tasteProfile)
+                    .put("userGender", userGender)
                     .toString()
 
                 val conn = (URL(backendUrl).openConnection() as HttpURLConnection).apply {

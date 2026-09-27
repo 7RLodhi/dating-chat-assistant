@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import ToneSelector from "./ToneSelector";
 import GoalSelector from "./GoalSelector";
 import LanguageSelector from "./LanguageSelector";
+import GenderSelector from "./GenderSelector";
 import MoodBadge from "./MoodBadge";
 import SuggestionCard from "./SuggestionCard";
 import PaywallModal from "./PaywallModal";
@@ -51,7 +52,7 @@ import {
 } from "@/lib/useScreenshotUpload";
 import { usePwaInstall } from "@/lib/pwa";
 import { APP_VERSION } from "@/lib/version";
-import { FactsResponse, Goal, Language, MatchFacts, Mode, PendingOutcome, SuggestResponse, Tone } from "@/lib/types";
+import { FactsResponse, Goal, Language, MatchFacts, Mode, PendingOutcome, SuggestResponse, Tone, UserGender } from "@/lib/types";
 
 export default function AssistantApp() {
   const [matches, setMatches] = useState<Match[]>([]);
@@ -74,6 +75,11 @@ export default function AssistantApp() {
   const [tone, setTone] = useState<Tone | null>(null);
   const [goal, setGoal] = useState<Goal>("get_a_reply");
   const [language, setLanguage] = useState<Language>("auto");
+  const [userGender, setUserGender] = useState<UserGender>(() => {
+    if (typeof window === "undefined") return "unspecified";
+    const saved = window.localStorage.getItem("dca_user_gender");
+    return saved === "male" || saved === "female" ? saved : "unspecified";
+  });
   const [styleExamples, setStyleExamples] = useState("");
   const [viaScreenshot, setViaScreenshot] = useState(false);
 
@@ -283,6 +289,7 @@ export default function AssistantApp() {
           tone: requestTone,
           goal,
           language,
+          userGender: userGender === "unspecified" ? undefined : userGender,
           styleExamples: styleExamples.trim() || undefined,
           viaScreenshot,
           tasteProfile: summarizeTaste()?.summary,
@@ -726,6 +733,17 @@ export default function AssistantApp() {
               <div className="space-y-4 border-t border-gray-200 p-3">
                 <GoalSelector value={goal} onChange={setGoal} />
                 <LanguageSelector value={language} onChange={setLanguage} />
+                <GenderSelector
+                  value={userGender}
+                  onChange={(g) => {
+                    setUserGender(g);
+                    try {
+                      window.localStorage.setItem("dca_user_gender", g);
+                    } catch {
+                      // Private mode etc. — setting just won't persist.
+                    }
+                  }}
+                />
                 <StylePanel onExamplesChange={setStyleExamples} />
               </div>
             )}

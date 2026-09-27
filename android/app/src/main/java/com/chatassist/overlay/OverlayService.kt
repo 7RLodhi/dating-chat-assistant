@@ -948,10 +948,13 @@ class OverlayService : Service() {
         // hash is part of the fingerprint so new votes regenerate.
         val taste = Prefs.tasteProfile(this)
         val mode = if (opener) "opener" else "reply"
+        // Gender rides the fingerprint too: declaring it later must
+        // regenerate, not re-serve the ungendered batch.
+        val genderTag = Prefs.userGender(this).takeIf { it == "male" || it == "female" } ?: ""
         val fingerprint = if (opener) {
-            "opener|${snapshot.title.orEmpty()}|t${taste.hashCode()}"
+            "opener|${snapshot.title.orEmpty()}|t${taste.hashCode()}|g$genderTag"
         } else {
-            "reply|$text|t${taste.hashCode()}"
+            "reply|$text|t${taste.hashCode()}|g$genderTag"
         }
         if (snapshot.suggestMode == mode && snapshot.suggestFor == fingerprint &&
             snapshot.suggestItems.isNotEmpty()
@@ -966,6 +969,8 @@ class OverlayService : Service() {
         list.removeAllViews()
         loadingSuggestions = true
         val tone = Prefs.tone(this)
+        // Declared gender (male/female/unspecified) — the server validates.
+        val userGender = Prefs.userGender(this)
         if (opener) {
             ApiClient.fetchSuggestions(
                 Prefs.backendUrl(this),
@@ -974,6 +979,7 @@ class OverlayService : Service() {
                 matchName = snapshot.title.orEmpty(),
                 callback = { result -> onSuggestionsLoaded(result, moodText, list, key, mode, fingerprint) },
                 tasteProfile = taste,
+                userGender = userGender,
             )
         } else {
             ApiClient.fetchSuggestions(
@@ -981,6 +987,7 @@ class OverlayService : Service() {
                 text, tone,
                 callback = { result -> onSuggestionsLoaded(result, moodText, list, key, mode, fingerprint) },
                 tasteProfile = taste,
+                userGender = userGender,
             )
         }
     }
