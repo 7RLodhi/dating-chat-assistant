@@ -190,11 +190,14 @@ class ChatReaderService : AccessibilityService() {
                 // once, reading the CURRENT window (not this stale event).
                 if (!retryPending) {
                     retryPending = true
+                    ChatBus.noteCaptureSkip("debounced+retry")
                     mainHandler.postDelayed({
                         retryPending = false
                         val fg = ChatBus.foregroundPackage
                         if (fg in ChatBus.SUPPORTED_PACKAGES) publishCurrent(fg)
                     }, DEBOUNCE_MS + 200)
+                } else {
+                    ChatBus.noteCaptureSkip("debounced")
                 }
                 return false
             }
@@ -205,30 +208,51 @@ class ChatReaderService : AccessibilityService() {
             // Same helper as tap-to-paste: the focused window may be the
             // keyboard or a popup, so scan for the dating app's window and
             // require it to match the event's package (never our panel).
-            val root = findSupportedAppRoot() ?: return false
-            if (root.packageName?.toString() != pkg) return false
+            val root = findSupportedAppRoot() ?: run {
+                ChatBus.noteCaptureSkip("no-root")
+                return false
+            }
+            if (root.packageName?.toString() != pkg) {
+                ChatBus.noteCaptureSkip("pkg-mismatch")
+                return false
+            }
             val parser = ChatParser.forPackage(pkg)
             // Hash gate before the expensive parse (see cheapTreeHash).
             val treeHash = cheapTreeHash(root)
-            if (!force && lastTreeHash[pkg] == treeHash) return false
+            if (!force && lastTreeHash[pkg] == treeHash) {
+                ChatBus.noteCaptureSkip("hash-same")
+                return false
+            }
             lastTreeHash[pkg] = treeHash
             // Only real conversation screens: a chat input must be on screen
             // (kills chat-lists, Status/Calls tabs, feeds, contact info…),
             // and list-screen markers are double-checked after parsing.
-            if (!parser.hasChatInput(root)) return false
+            if (!parser.hasChatInput(root)) {
+                ChatBus.noteCaptureSkip("no-input")
+                return false
+            }
             val text = parser.parse(root)
             // Mid-transition frames (feed rows mixed into chat) are dropped
             // outright — publishing them would poison the snapshot and every
             // suggestion after it.
-            if (parser.looksContaminated(text)) return false
+            if (parser.looksContaminated(text)) {
+                ChatBus.noteCaptureSkip("contaminated")
+                return false
+            }
             // Empty chats publish too (title only): switching to a fresh,
             // message-less conversation must move latestKey and yield
             // openers — otherwise the panel sticks on the previous match.
             // Only a title-less empty read means nothing at all.
             val title = parser.extractTitle(root)
                 ?.replace("|", " ")?.trim()?.take(40)?.takeIf { it.isNotBlank() }
-            if (text.isBlank() && title == null) return false
-            if (parser.isListScreen(title, text)) return false
+            if (text.isBlank() && title == null) {
+                ChatBus.noteCaptureSkip("empty-titleless")
+                return false
+            }
+            if (parser.isListScreen(title, text)) {
+                ChatBus.noteCaptureSkip("list-screen")
+                return false
+            }
             val key = if (title != null) "$pkg|$title" else pkg
             ChatBus.publish(
                 key,

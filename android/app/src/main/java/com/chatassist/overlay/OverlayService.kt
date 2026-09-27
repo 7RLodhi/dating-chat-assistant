@@ -522,6 +522,9 @@ class OverlayService : Service() {
         }
         val panelView = panel!!
         panelView.alpha = Prefs.panelAlphaPct(this) / 100f
+        // Build version inline left of Refresh — screenshots then always
+        // tell us which release produced them.
+        panelView.findViewById<TextView>(R.id.versionText).text = "v${appVersionName()}"
         setupCloseButton(panelView, panelParams!!)
         panelView.findViewById<Button>(R.id.btnRefresh).setOnClickListener {
             // Re-capture first: if the reader missed this chat (debounced
@@ -1099,6 +1102,19 @@ class OverlayService : Service() {
     private fun copyToClipboard(text: String) {
         val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
         cm.setPrimaryClip(android.content.ClipData.newPlainText("suggestion", text))
+    }
+
+    private fun appVersionName(): String {
+        return try {
+            val info = if (android.os.Build.VERSION.SDK_INT >= 33) {
+                packageManager.getPackageInfo(packageName, android.content.pm.PackageManager.PackageInfoFlags.of(0))
+            } else {
+                @Suppress("DEPRECATION") packageManager.getPackageInfo(packageName, 0)
+            }
+            info.versionName ?: "?"
+        } catch (_: Exception) {
+            "?"
+        }
     }
 
     override fun onDestroy() {

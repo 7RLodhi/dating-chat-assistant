@@ -53,6 +53,13 @@ class CaptureLogActivity : AppCompatActivity() {
         } else {
             fgLog.joinToString("\n")
         }
+        val copyText = "FOREGROUND LOG\n$logText\n\nCAPTURE SKIPS (this run): ${ChatBus.captureSkipSummary()}"
+        list.addView(TextView(this).apply {
+            text = "Capture skips (this run): ${ChatBus.captureSkipSummary()}"
+            textSize = 11f
+            setPadding(16, 0, 16, 4)
+            setTextColor(getColor(android.R.color.darker_gray))
+        })
         list.addView(TextView(this).apply {
             text = logText
             textSize = 11f
@@ -61,7 +68,7 @@ class CaptureLogActivity : AppCompatActivity() {
             setTextIsSelectable(true)
             setOnClickListener {
                 val cm = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
-                cm.setPrimaryClip(ClipData.newPlainText("fglog", logText))
+                cm.setPrimaryClip(ClipData.newPlainText("fglog", copyText))
                 Toast.makeText(this@CaptureLogActivity, "Foreground log copied", Toast.LENGTH_SHORT).show()
             }
         })

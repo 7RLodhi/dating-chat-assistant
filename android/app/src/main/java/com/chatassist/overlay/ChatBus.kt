@@ -121,6 +121,26 @@ object ChatBus {
     @Synchronized
     fun foregroundLog(): List<String> = fgLog.toList()
 
+    /**
+     * Capture-skip counters (this run only): every time the reader decides
+     * NOT to publish, the reason tallies here. Surfaced in the Capture log
+     * screen — if a chat never appears, these counters name the exact gate
+     * that ate it (debounced, hash-same, no-input, list-screen,
+     * empty-titleless, contaminated, no-root, pkg-mismatch).
+     */
+    private val skipCounts = mutableMapOf<String, Int>()
+
+    @Synchronized
+    fun noteCaptureSkip(reason: String) {
+        skipCounts[reason] = (skipCounts[reason] ?: 0) + 1
+    }
+
+    @Synchronized
+    fun captureSkipSummary(): String =
+        if (skipCounts.isEmpty()) "none"
+        else skipCounts.entries.sortedByDescending { it.value }
+            .joinToString(", ") { "${it.key}=${it.value}" }
+
     /** Feed-contamination check, shared by the reader gate and heal rule. */
     fun looksContaminated(appPackage: String, text: String): Boolean =
         runCatching { ChatParser.forPackage(appPackage).looksContaminated(text) }
