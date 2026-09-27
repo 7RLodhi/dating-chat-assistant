@@ -64,13 +64,17 @@ class OverlayService : Service() {
     private val mainHandler = Handler(Looper.getMainLooper())
 
     /**
-     * Collapses the panel when the foreground leaves all supported apps
-     * (home screen, app switch, any other app). Our own package is excluded
-     * so the panel never dismisses itself.
+     * The bubble (and panel) exist only inside supported apps. Anywhere else
+     * — home, app switch, other apps, even our own app screens — the panel
+     * collapses and the bubble hides. It reappears on its own the moment a
+     * supported dating app comes forward; nothing to tap.
      */
     private val foregroundListener: (String) -> Unit = { pkg ->
-        if (pkg != packageName && pkg !in ChatBus.SUPPORTED_PACKAGES) {
-            collapsePanelIfOpen()
+        mainHandler.post {
+            if (pkg != packageName && pkg !in ChatBus.SUPPORTED_PACKAGES) {
+                if (panel != null) togglePanel()
+            }
+            syncBubbleVisibility()
         }
     }
 
@@ -80,10 +84,14 @@ class OverlayService : Service() {
         ChatBus.addForegroundListener(foregroundListener)
     }
 
-    private fun collapsePanelIfOpen() {
-        mainHandler.post {
-            if (panel != null) togglePanel()
+    /** Visible if and only if a supported app is in front (and panel closed). */
+    private fun syncBubbleVisibility() {
+        if (panel != null) {
+            bubble?.visibility = View.GONE
+            return
         }
+        bubble?.visibility =
+            if (ChatBus.foregroundPackage in ChatBus.SUPPORTED_PACKAGES) View.VISIBLE else View.GONE
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -180,6 +188,9 @@ class OverlayService : Service() {
         }
         applyBubbleAppearance()
         windowManager.addView(bubble, bubbleParams)
+        // Start hidden unless a supported app is already in front — the
+        // foreground listener takes over from here.
+        syncBubbleVisibility()
     }
 
     /**
@@ -396,8 +407,9 @@ class OverlayService : Service() {
         if (panel != null) {
             windowManager.removeView(panel)
             panel = null
-            // Bubble hid while the panel was open — bring it back.
-            bubble?.visibility = View.VISIBLE
+            // Bubble hid while the panel was open — show again only if a
+            // supported app is still in front.
+            syncBubbleVisibility()
             return
         }
         val inflater = LayoutInflater.from(this)
@@ -458,7 +470,7 @@ class OverlayService : Service() {
         windowManager.addView(panel, panelParams)
         // The bubble would sit under/over the panel and steal taps — hide it
         // until the panel closes.
-        bubble?.visibility = View.GONE
+        syncBubbleVisibility()
         loadSuggestions()
     }
 

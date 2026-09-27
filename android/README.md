@@ -136,8 +136,14 @@ app to go back to tap-to-copy. Safeguards, all deliberate:
 
 ## Behavior notes
 
-- **Bubble hides with the panel:** opening the panel hides the bubble so it
-  never covers panel content or steals taps; closing the panel brings it back.
+- **Bubble auto-visibility:** the bubble shows only while a supported app is
+  in front — nowhere else, not even over this app's own screens. Open Tinder
+  and it appears; go home and it's gone. No manual toggling. It also hides
+  while its own panel is open so it never covers panel content.
+- **Best-effort auto-start:** opening a supported app while the overlay is
+  down tries to start the bubble directly (works on older Android). Where the
+  OS blocks background starts, you get one tap-to-start notification instead
+  (max one per 10 min) — after a reboot or drop-to-close, at most one tap.
 - **Drop-to-close:** drag the bubble to the ✕ target at the bottom-center to
   dismiss the overlay entirely (bubble + panel, service stops). Reopen anytime
   from the app's Start button.
