@@ -72,19 +72,32 @@ class OverlayService : Service() {
     private val mainHandler = Handler(Looper.getMainLooper())
 
     /**
-     * The bubble (and panel) exist only inside supported apps. Anywhere else
-     * — home, app switch, other apps, even our own app screens — the panel
-     * collapses and the bubble hides. It reappears on its own the moment a
-     * supported dating app comes forward; nothing to tap.
+     * The bubble (and panel) exist only inside supported apps. Window events
+     * from anything else leave everything untouched EXCEPT real app switches
+     * (home, another app), which hide.
      *
-     * Two packages are exempt and leave everything untouched: our own (panel
-     * / trash windows must never collapse the panel or steal visibility)
-     * and input methods (the keyboard belongs to the chat session — hiding
-     * the bubble while typing would break tap-to-paste exactly when it's
-     * needed, and the panel must stay up alongside it).
+     * Exempt (never react): our own windows (panel/trash must not trigger);
+     * keyboards — Gboard-style ("inputmethod") AND standalone ones like
+     * SwiftKey (com.touchtype.swiftkey) and Samsung (honeyboard), found via
+     * a real flight log where SwiftKey hid the bubble for whole typing
+     * sessions; and com.android.systemui, which fires constantly on some
+     * OEM skins (Nothing OS sent 6 in 4 minutes) for status-bar/gesture
+     * noise while the dating app is still frontmost. That systemui storm
+     * was the hide-and-seek. Lock screen needs no handling: the window
+     * manager keeps overlays beneath the keyguard by itself.
      */
-    private fun isExemptForeground(pkg: String): Boolean =
-        pkg == packageName || "inputmethod" in pkg.lowercase()
+    private fun isExemptForeground(pkg: String): Boolean {
+        if (pkg == packageName) return true
+        if (pkg == "com.android.systemui") return true
+        val lower = pkg.lowercase()
+        return lower.contains("inputmethod") ||
+            lower.contains("keyboard") ||
+            lower.contains("swiftkey") ||
+            lower.contains("touchtype") ||
+            lower.contains("honeyboard") ||
+            lower.contains("fleksy") ||
+            lower.contains("swype")
+    }
 
     private val foregroundListener: (String) -> Unit = { pkg ->
         mainHandler.post {
