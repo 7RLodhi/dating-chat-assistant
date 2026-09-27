@@ -9,6 +9,7 @@ package com.chatassist.overlay
  * in memory only — a process restart starts fresh.
  */
 import android.content.Context
+import com.chatassist.overlay.parsers.ChatParser
 import java.util.concurrent.CopyOnWriteArrayList
 import org.json.JSONObject
 
@@ -21,6 +22,8 @@ object ChatBus {
         /** Raw /api/facts JSON, plus the exact text it was computed from. */
         val factsJson: String? = null,
         val factsText: String? = null,
+        /** Hand-added profile details (app screen) the overlay missed. */
+        val userNote: String? = null,
     )
 
     private const val MAX_CHATS = 10
@@ -86,11 +89,21 @@ object ChatBus {
 
     @Synchronized
     fun publish(key: String, snapshot: ChatSnapshot) {
-        val existing = snapshots[key]
+        // Keys merge case-insensitively: Snapchat exposes the same chat as
+        // "NIDHIII…" and "Nidhiii…" across screens, which used to list twice.
+        val oldKey = snapshots.keys.firstOrNull { it.equals(key, ignoreCase = true) }
+        val existing = oldKey?.let { snapshots[it] }
         // Ignore duplicate snapshots so we don't spam the backend.
         if (existing != null && existing.text == snapshot.text) return
+        if (oldKey != null) snapshots.remove(oldKey)
         snapshots.remove(key)
-        snapshots[key] = snapshot
+        // Preserve hand-added notes and facts across re-captures.
+        val merged = snapshot.copy(
+            factsJson = snapshot.factsJson ?: existing?.factsJson,
+            factsText = snapshot.factsText ?: existing?.factsText,
+            userNote = snapshot.userNote ?: existing?.userNote,
+        )
+        snapshots[key] = merged
         while (snapshots.size > MAX_CHATS) {
             snapshots.remove(snapshots.keys.first())
         }
@@ -114,6 +127,14 @@ object ChatBus {
         persistLocked()
     }
 
+    /** Saves a hand-added profile note (latestKey untouched). */
+    @Synchronized
+    fun updateNote(key: String, note: String) {
+        val existing = snapshots[key] ?: return
+        snapshots[key] = existing.copy(userNote = note.takeIf { it.isNotBlank() })
+        persistLocked()
+    }
+
     private fun persistLocked() {
         val ctx = appContext ?: return
         runCatching {
@@ -125,7 +146,8 @@ object ChatBus {
                     .put("text", s.text)
                     .put("at", s.at)
                     .put("factsJson", s.factsJson)
-                    .put("factsText", s.factsText))
+                    .put("factsText", s.factsText)
+                    .put("userNote", s.userNote))
             }
             ctx.getSharedPreferences(PREFS_FILE, Context.MODE_PRIVATE).edit()
                 .putString(KEY_SNAPSHOTS, root.toString()).apply()
@@ -141,15 +163,41 @@ object ChatBus {
             val root = JSONObject(raw)
             for (key in root.keys()) {
                 val o = root.optJSONObject(key) ?: continue
+                val storedAt = o.optLong("at", 0L)
+                // Never let a stale disk read clobber a newer live capture.
+                if ((snapshots[key]?.at ?: -1L) > storedAt) continue
                 snapshots[key] = ChatSnapshot(
                     appPackage = o.optString("appPackage"),
                     title = o.optString("title").takeIf { it.isNotEmpty() },
                     text = o.optString("text"),
-                    at = o.optLong("at", 0L),
+                    at = storedAt,
                     factsJson = o.optString("factsJson").takeIf { it.isNotEmpty() },
                     factsText = o.optString("factsText").takeIf { it.isNotEmpty() },
+                    userNote = o.optString("userNote").takeIf { it.isNotEmpty() },
                 )
             }
+            // One-time repair for stores written by older builds: merge keys
+            // that differ only by case ("NIDHIII…" vs "Nidhiii…", newest wins)
+            // and purge list-screen captures (Status, Locked chats, feeds).
+            var repaired = false
+            val merged = LinkedHashMap<String, ChatSnapshot>()
+            for ((_, group) in snapshots.entries.groupBy { it.key.lowercase() }) {
+                val newest = group.maxByOrNull { it.value.at }!!
+                if (group.size > 1) repaired = true
+                merged[newest.key] = newest.value
+            }
+            snapshots.clear()
+            snapshots.putAll(merged)
+            val junk = snapshots.filter { (_, s) ->
+                runCatching {
+                    ChatParser.forPackage(s.appPackage).isListScreen(s.title, s.text)
+                }.getOrDefault(false)
+            }.keys
+            if (junk.isNotEmpty()) {
+                repaired = true
+                junk.forEach { snapshots.remove(it) }
+            }
+            if (repaired) persistLocked()
             while (snapshots.size > MAX_CHATS) {
                 snapshots.remove(snapshots.keys.first())
             }

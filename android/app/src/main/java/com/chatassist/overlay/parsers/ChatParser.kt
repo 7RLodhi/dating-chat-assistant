@@ -146,6 +146,47 @@ open class ChatParser(val appPackage: String) {
         return best
     }
 
+    /**
+     * True when a visible text field looks like a chat input rather than
+     * search. Conversation screens always have one; list/feed/status tabs
+     * either have none or only a search box. This is the primary
+     * list-screen gate — [isListScreen] stays as backup for odd screens.
+     */
+    open fun hasChatInput(root: AccessibilityNodeInfo?): Boolean {
+        if (root == null) return false
+        var found = false
+        fun walk(node: AccessibilityNodeInfo) {
+            if (!found && node.isEditable && node.isVisibleToUser) {
+                val bounds = Rect()
+                node.getBoundsInScreen(bounds)
+                val hint = node.text?.toString().orEmpty() + " " +
+                    node.contentDescription?.toString().orEmpty()
+                if (bounds.height() > 0 && !hint.contains("search", ignoreCase = true)) {
+                    found = true
+                }
+            }
+            if (!found) {
+                for (i in 0 until node.childCount) {
+                    node.getChild(i)?.let { walk(it) }
+                }
+            }
+        }
+        walk(root)
+        return found
+    }
+
+    /**
+     * True when this looks like an app list/feed screen rather than an open
+     * conversation (chat-list, Status/Calls tabs, Snapchat feed…). Those
+     * screens fire the same content events, and without this gate every
+     * contact row becomes a phantom "match". Real conversations are always
+     * titled with a person's name; list screens carry generic headers.
+     */
+    open fun isListScreen(title: String?, text: String): Boolean =
+        title?.trim()?.let { t ->
+            GENERIC_SCREEN_TITLES.any { it.equals(t, ignoreCase = true) }
+        } == true
+
     companion object {
         fun forPackage(appPackage: String): ChatParser = when (appPackage) {
             "com.tinder" -> TinderParser()
@@ -156,6 +197,13 @@ open class ChatParser(val appPackage: String) {
             "com.whatsapp" -> WhatsAppParser()
             else -> ChatParser(appPackage)
         }
+
+        /** Generic list/feed headers — no real conversation is titled these. */
+        private val GENERIC_SCREEN_TITLES = setOf(
+            "Status", "Calls", "Updates", "Communities", "Locked chats",
+            "Chat", "Discover", "Stories", "Spotlight", "Search", "Settings",
+            "Camera", "Archived",
+        )
     }
 }
 
@@ -191,6 +239,12 @@ class BumbleParser : ChatParser("com.bumble.app") {
  * captured, and view-once messages are read only while visible on screen.
  */
 class SnapchatParser : ChatParser("com.snapchat.android") {
+    override fun isListScreen(title: String?, text: String): Boolean {
+        // "Let X know when you arrive safely" nudge only exists on the feed.
+        if (text.contains("arrive safely", ignoreCase = true)) return true
+        return super.isListScreen(title, text)
+    }
+
     override val skipTextSubstrings = super.skipTextSubstrings + listOf(
         "Send a chat", "New Snap", "New Chat", "Tap to Chat", "is typing", "just now",
         "Enable notifications", "Don't miss", "notification_cta_button",
@@ -321,6 +375,15 @@ class InstagramParser : ChatParser("com.instagram.android") {
  * reply generator sees them as plain lines, same as everywhere else.
  */
 class WhatsAppParser : ChatParser("com.whatsapp") {
+    /** Chat-list rows ("Locked chats", search bar…) appear as exact lines. */
+    override fun isListScreen(title: String?, text: String): Boolean {
+        if (super.isListScreen(title, text)) return true
+        return text.lineSequence().map { it.substringAfter("]:", it).trim() }.any {
+            it.equals("Locked chats", ignoreCase = true) ||
+                it.equals("Ask Meta AI or Search", ignoreCase = true)
+        }
+    }
+
     override val skipTextSubstrings = super.skipTextSubstrings + listOf(
         "end-to-end encrypted", "last seen", "UNREAD MESSAGE",
     )

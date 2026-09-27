@@ -141,6 +141,13 @@ app to go back to tap-to-copy. Safeguards, all deliberate:
 - **Drop-to-close:** drag the bubble to the ✕ target at the bottom-center to
   dismiss the overlay entirely (bubble + panel, service stops). Reopen anytime
   from the app's Start button.
+- **Conversation-only capture:** the reader publishes only screens showing a
+  chat input — chat lists, Status/Calls tabs, feeds and contact-info screens
+  are ignored (plus per-app list markers as backup). Same rule purges junk
+  rows saved by older builds on startup.
+- **One row per chat:** keys merge case-insensitively, so "NIDHIII…" /
+  "Nidhiii…" can never list twice; matches keep hand-added notes and learned
+  summaries across re-captures.
 
 - **Panel auto-dismiss:** the panel collapses by itself when you leave all
   supported apps (home, app switch, any other app). The bubble stays — tap it

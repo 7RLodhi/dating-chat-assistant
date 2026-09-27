@@ -132,10 +132,15 @@ class ChatReaderService : AccessibilityService() {
             val root = findSupportedAppRoot() ?: return
             if (root.packageName?.toString() != pkg) return
             val parser = ChatParser.forPackage(pkg)
+            // Only real conversation screens: a chat input must be on screen
+            // (kills chat-lists, Status/Calls tabs, feeds, contact info…),
+            // and list-screen markers are double-checked after parsing.
+            if (!parser.hasChatInput(root)) return
             val text = parser.parse(root)
             if (text.isNotBlank()) {
                 val title = parser.extractTitle(root)
                     ?.replace("|", " ")?.trim()?.take(40)?.takeIf { it.isNotBlank() }
+                if (parser.isListScreen(title, text)) return
                 val key = if (title != null) "$pkg|$title" else pkg
                 ChatBus.publish(
                     key,

@@ -299,6 +299,34 @@ class MainActivity : AppCompatActivity() {
     private fun renderMatchDetail(detail: LinearLayout, key: String) {
         detail.removeAllViews()
         val snapshot = ChatBus.get(key) ?: return
+        // Summary first…
+        detail.addView(sectionLabel("📋 Summary"))
+        val summaryBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        detail.addView(summaryBox)
+        renderStoredSummaryInto(summaryBox, key)
+        detail.addView(Button(this).apply {
+            text = "Load summary"
+            setOnClickListener { loadSummaryFor(key, summaryBox) }
+        })
+        // …then your hand-added profile details (feeds future summaries)…
+        detail.addView(sectionLabel("✏️ Profile details"))
+        detail.addView(smallGrey("Add what the overlay missed — her city, age, job, etc. Merges into the next summary."))
+        val noteEdit = android.widget.EditText(this).apply {
+            setText(snapshot.userNote.orEmpty())
+            hint = "e.g. 24, teacher, loves trekking…"
+            minLines = 2
+            textSize = 14f
+        }
+        detail.addView(noteEdit)
+        detail.addView(Button(this).apply {
+            text = "Save details"
+            setOnClickListener {
+                ChatBus.updateNote(key, noteEdit.text.toString().trim())
+                android.widget.Toast.makeText(this@MainActivity, "Saved — used in future summaries", android.widget.Toast.LENGTH_SHORT).show()
+                renderMatchList()
+            }
+        })
+        // …chat rows last.
         detail.addView(sectionLabel("💬 Chat"))
         val lines = snapshot.text.lineSequence().map { it.trim() }
             .filter { it.isNotEmpty() }.toList().takeLast(30)
@@ -322,14 +350,6 @@ class MainActivity : AppCompatActivity() {
                 })
             }
         }
-        detail.addView(sectionLabel("📋 Summary"))
-        val summaryBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        detail.addView(summaryBox)
-        renderStoredSummaryInto(summaryBox, key)
-        detail.addView(Button(this).apply {
-            text = "Load summary"
-            setOnClickListener { loadSummaryFor(key, summaryBox) }
-        })
     }
 
     private fun sectionLabel(text: String): TextView = TextView(this).apply {
@@ -347,7 +367,22 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderStoredSummaryInto(box: LinearLayout, key: String) {
         box.removeAllViews()
-        val raw = ChatBus.get(key)?.factsJson
+        val snapshot = ChatBus.get(key)
+        val note = snapshot?.userNote.orEmpty()
+        if (note.isNotBlank()) {
+            box.addView(TextView(this).apply {
+                text = "Your notes"
+                textSize = 11f
+                setTextColor(getColor(android.R.color.darker_gray))
+            })
+            box.addView(TextView(this).apply {
+                text = note
+                textSize = 13f
+                setTextColor(getColor(android.R.color.black))
+                setPadding(0, 0, 0, 6)
+            })
+        }
+        val raw = snapshot?.factsJson
         if (raw.isNullOrBlank()) {
             box.addView(smallGrey("No summary yet — tap Load summary. Uses the same learned sheet as the overlay panel."))
             return
@@ -400,7 +435,9 @@ class MainActivity : AppCompatActivity() {
         box.removeAllViews()
         box.addView(smallGrey("Learning summary…"))
         val previous = stored?.let { runCatching { JSONObject(it) }.getOrNull() }
-        ApiClient.fetchFacts(Prefs.backendUrl(this), text, previous) { result ->
+        ApiClient.fetchFacts(
+            Prefs.backendUrl(this), text, previous,
+            callback = { result ->
             loadingFactsKeys.remove(key)
             result.fold(
                 onSuccess = { (json, _) ->
@@ -415,7 +452,7 @@ class MainActivity : AppCompatActivity() {
                     box.addView(smallGrey("Couldn't load summary: ${e.message} — retry with Load summary."))
                 },
             )
-        }
+        }, bio = snapshot?.userNote.orEmpty())
     }
 
     private fun appVersionName(): String {

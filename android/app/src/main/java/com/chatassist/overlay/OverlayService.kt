@@ -576,11 +576,25 @@ class OverlayService : Service() {
             rows.addView(hintView("Saved summary looks corrupt — tap 📋 Summary to reload."))
             return
         }
-        renderFactSheet(rows, sheet)
+        renderFactSheet(rows, sheet, snapshot?.userNote.orEmpty())
     }
 
-    private fun renderFactSheet(rows: LinearLayout, sheet: FactSheet) {
+    private fun renderFactSheet(rows: LinearLayout, sheet: FactSheet, note: String = "") {
         rows.removeAllViews()
+        if (note.isNotBlank()) {
+            rows.addView(TextView(this).apply {
+                text = "Your notes"
+                textSize = 11f
+                setPadding(8, 6, 8, 0)
+                setTextColor(getColor(android.R.color.darker_gray))
+            })
+            rows.addView(TextView(this).apply {
+                text = note
+                textSize = 13f
+                setPadding(8, 0, 8, 6)
+                setTextColor(getColor(android.R.color.black))
+            })
+        }
         if (sheet.summary.isNotBlank()) {
             rows.addView(TextView(this).apply {
                 text = sheet.summary
@@ -632,14 +646,19 @@ class OverlayService : Service() {
         rows.removeAllViews()
         rows.addView(hintView("Learning summary…"))
         val previous = stored?.let { runCatching { JSONObject(it) }.getOrNull() }
-        ApiClient.fetchFacts(Prefs.backendUrl(this), text, previous) { result ->
+        // Hand-added notes ride along as bio so learning merges them in.
+        val note = snapshot?.userNote.orEmpty()
+        ApiClient.fetchFacts(Prefs.backendUrl(this), text, previous, callback = { result ->
             loadingFacts = false
             val pv = panel ?: return@fetchFacts
             result.fold(
                 onSuccess = { (json, sheet) ->
                     ChatBus.updateFacts(key, json.toString(), text)
                     if (ChatBus.latestKey == key) {
-                        renderFactSheet(pv.findViewById(R.id.summaryRows), sheet)
+                        renderFactSheet(
+                            pv.findViewById(R.id.summaryRows), sheet,
+                            ChatBus.get(key)?.userNote.orEmpty(),
+                        )
                     }
                 },
                 onFailure = { e ->
@@ -649,7 +668,7 @@ class OverlayService : Service() {
                     }
                 },
             )
-        }
+        }, bio = note)
     }
 
     /** True when the match has said anything substantive (not just labels). */

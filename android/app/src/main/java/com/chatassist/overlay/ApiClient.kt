@@ -95,6 +95,7 @@ object ApiClient {
         conversationText: String,
         previousFacts: JSONObject?,
         callback: (Result<Pair<JSONObject, FactSheet>>) -> Unit,
+        bio: String = "",
     ) {
         Thread {
             try {
@@ -104,7 +105,7 @@ object ApiClient {
                     "$backendUrl/api/facts"
                 }
                 val body = JSONObject()
-                    .put("bio", "")
+                    .put("bio", bio)
                     .put("conversationText", conversationText)
                 if (previousFacts != null) body.put("previousFacts", previousFacts)
 
