@@ -18,6 +18,14 @@ open class ChatParser(val appPackage: String) {
     /** Node class names / view IDs whose text is app chrome, never chat. */
     protected open val skipTextSubstrings: List<String> = listOf(
         "Type a message", "Message ", "Send", " • ", "Online", "Active ",
+        // Our own overlay panel strings — defense-in-depth alongside the
+        // reader's active-window package check, so panel text can never be
+        // mistaken for chat even if window focus misbehaves.
+        "Suggestions ready", "No chat text captured yet", "Thinking…",
+        "Thinking of openers…", "Learning summary…", "Tap one to copy",
+        "Couldn't load suggestions", "Couldn't load summary",
+        "Couldn't find the chat box", "Pasted into chat", "Copied — paste",
+        "Load summary", "Tap for chat + summary", "Tap to collapse",
     )
 
     /** Max messages to keep (most recent). Oldest are dropped. */

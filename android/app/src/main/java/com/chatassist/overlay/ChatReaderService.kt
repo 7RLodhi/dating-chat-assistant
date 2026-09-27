@@ -108,6 +108,13 @@ class ChatReaderService : AccessibilityService() {
 
         try {
             val root = rootInActiveWindow ?: return
+            // The overlay panel is focusable (its buttons need taps), so when
+            // it is open the "active window" can be OUR panel, not the dating
+            // app — parsing it would ingest our own suggestion cards as chat
+            // (a feedback loop: moods summarizing "multiple opening
+            // questions", phantom phrases and invented cities in replies).
+            // Only ever parse the window belonging to the event's package.
+            if (root.packageName?.toString() != pkg) return
             val parser = ChatParser.forPackage(pkg)
             val text = parser.parse(root)
             if (text.isNotBlank()) {

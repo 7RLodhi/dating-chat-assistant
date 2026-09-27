@@ -122,11 +122,11 @@ Hinglish, name puns) flows to the overlay for free. The URL is fixed to the
 production web app (a former onboarding override field was removed — a
 typo'd URL silently broke suggestions).
 
-## Tap-to-paste automation (opt-in, default off)
+## Tap-to-paste (default on)
 
-With **Automation → tap-to-paste** enabled in the app, tapping a suggestion
-fills the foreground chat input directly (found as the lowest visible
-editable field). Safeguards, all deliberate:
+Tapping a suggestion fills the foreground chat input directly (found as the
+lowest visible editable field). Turn it off under **Automation** in the
+app to go back to tap-to-copy. Safeguards, all deliberate:
 - The paste is refused unless a supported dating app is actually in front —
   it can never land text in any other app.
 - No send action is ever performed. You always review and press send.

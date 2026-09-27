@@ -77,13 +77,14 @@ object Prefs {
             .putInt(KEY_PANEL_ALPHA, pct.coerceIn(20, 80)).apply()
     }
 
-    // Tap-to-paste automation (opt-in, default off): tapping a suggestion
-    // fills the dating app's chat input; the user always presses send.
+    // Tap-to-paste: tapping a suggestion fills the dating app's chat input;
+    // the user always presses send. Default ON (tapping copies to clipboard
+    // only when opted out or when the chat box can't be found).
     private const val KEY_AUTO_PASTE = "auto_paste"
 
     fun autoPaste(ctx: Context): Boolean =
         ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE)
-            .getBoolean(KEY_AUTO_PASTE, false)
+            .getBoolean(KEY_AUTO_PASTE, true)
 
     fun setAutoPaste(ctx: Context, enabled: Boolean) {
         ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
