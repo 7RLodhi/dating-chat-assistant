@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { usePwaInstall } from "@/lib/pwa";
 
-export type SideMenuItem = "doubleMeaning" | "darkFantasy";
+export type SideMenuItem = "doubleMeaning" | "darkFantasy" | "dashboard";
 
 export default function SideMenu({
   open,
@@ -74,6 +74,16 @@ export default function SideMenu({
               <span className="ml-auto rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-700">
                 18+
               </span>
+            </button>
+          </li>
+          <li>
+            <button
+              type="button"
+              onClick={() => onSelect("dashboard")}
+              className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-gray-800 hover:bg-gray-100"
+            >
+              <span className="text-lg">📊</span>
+              Match insights
             </button>
           </li>
           <li>

@@ -11,8 +11,10 @@ import {
   buildOpenerUserPrompt,
   buildRegisterCorrection,
   buildReplyUserPrompt,
+  buildVerbCorrection,
   detectHindiRegister,
   violatesRegister,
+  violatesVerbForm,
 } from "@/lib/prompts";
 import { getTopPunForName, recordGeneration } from "@/lib/store";
 import { Goal, Language, SuggestRequestBody, SuggestResponse, Tone } from "@/lib/types";
@@ -128,20 +130,27 @@ export async function POST(req: NextRequest) {
       schema,
     });
 
-    // Hard guard for Hindi/Hinglish pronoun register (a prompt rule alone
-    // still slipped ~1 in 8 suggestions): drop suggestions that use the
-    // wrong register; if fewer than 3 survive, retry once with an explicit
-    // correction and keep the better of the two attempts.
-    const register = mode === "reply" && language !== "english" ? detectHindiRegister(textField) : null;
-    if (register && Array.isArray(result.suggestions)) {
+    // Hard guards for Hindi/Hinglish grammar (a prompt rule alone still
+    // slips): drop suggestions with the wrong pronoun register or with
+    // ungrammatical perfect+hoon verbs ("dekha hoon"); if fewer than 3
+    // survive, retry once with explicit corrections and keep the better of
+    // the two attempts.
+    const needsHindiGuard = mode === "reply" && language !== "english";
+    const register = needsHindiGuard ? detectHindiRegister(textField) : null;
+    if (needsHindiGuard && Array.isArray(result.suggestions)) {
       const keep = (r: SuggestResponse) =>
-        (r.suggestions ?? []).filter((s) => !violatesRegister(s.text, register));
+        (r.suggestions ?? []).filter(
+          (s) => !violatesRegister(s.text, register) && !violatesVerbForm(s.text)
+        );
       let kept = keep(result);
       if (kept.length < 3) {
         try {
           const retry = await callLLMForJSON<SuggestResponse>({
             systemPrompt: SYSTEM_PROMPT,
-            userPrompt: userPrompt + buildRegisterCorrection(register),
+            userPrompt:
+              userPrompt +
+              (register ? buildRegisterCorrection(register) : "") +
+              buildVerbCorrection(),
             schema,
           });
           const retryKept = keep(retry);
@@ -154,7 +163,7 @@ export async function POST(req: NextRequest) {
           console.error("register retry failed, keeping first attempt:", err);
         }
       }
-      // Never return an empty list over a pronoun slip.
+      // Never return an empty list over a grammar slip.
       if (kept.length > 0) result = { ...result, suggestions: kept };
     }
 

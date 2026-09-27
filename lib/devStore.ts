@@ -21,3 +21,25 @@ export async function appendJSONLine(
     console.error(`Failed to write to ${fileName}:`, err);
   }
 }
+
+/** Reads every JSON object from a local .data/*.jsonl file (skips bad lines). */
+export async function readJSONLines<T = Record<string, unknown>>(
+  fileName: string
+): Promise<T[]> {
+  try {
+    const raw = await fs.readFile(path.join(DATA_DIR, fileName), "utf-8");
+    const out: T[] = [];
+    for (const line of raw.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      try {
+        out.push(JSON.parse(trimmed) as T);
+      } catch {
+        // Skip corrupt lines — logging must never break reads either.
+      }
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}

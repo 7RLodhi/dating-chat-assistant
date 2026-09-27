@@ -29,6 +29,41 @@ class ChatReaderService : AccessibilityService() {
 
     private var lastPublishAt = 0L
 
+    /**
+     * Battery diet: full parses walk the whole tree with a bounds IPC per
+     * leaf, but most events (scroll settling, presence/timer redraws) change
+     * nothing. This structural hash costs one bounds-free walk; when it
+     * matches the last parse for that app, the expensive parse is skipped
+     * outright. Typing, new messages and screen changes alter text → hash
+     * changes → normal capture. One entry per supported package.
+     */
+    private val lastTreeHash = mutableMapOf<String, Long>()
+
+    private fun cheapTreeHash(root: AccessibilityNodeInfo): Long {
+        var h = -3750763034362895579L // FNV-1a 64 offset basis
+        fun mix(v: Int) {
+            h = h xor v.toLong()
+            h *= 1099511628211L // FNV prime
+        }
+        fun walk(node: AccessibilityNodeInfo) {
+            mix(node.childCount)
+            // Skip keystroke text inside inputs: typing bursts would
+            // invalidate the hash on every character (each still parses, then
+            // dedupes). Sent messages appear as message leaves, so nothing
+            // real is ever missed by this.
+            if (!node.isEditable) {
+                // Platform type: text really is null for container nodes.
+                mix(node.text?.toString()?.hashCode() ?: 0)
+                mix(node.contentDescription?.toString()?.hashCode() ?: 0)
+            }
+            for (i in 0 until node.childCount) {
+                node.getChild(i)?.let { walk(it) }
+            }
+        }
+        walk(root)
+        return h
+    }
+
     override fun onServiceConnected() {
         // Config comes from res/xml/accessibility_service_config.xml.
         ChatBus.setAppContext(this)
@@ -132,6 +167,10 @@ class ChatReaderService : AccessibilityService() {
             val root = findSupportedAppRoot() ?: return
             if (root.packageName?.toString() != pkg) return
             val parser = ChatParser.forPackage(pkg)
+            // Hash gate before the expensive parse (see cheapTreeHash).
+            val treeHash = cheapTreeHash(root)
+            if (lastTreeHash[pkg] == treeHash) return
+            lastTreeHash[pkg] = treeHash
             // Only real conversation screens: a chat input must be on screen
             // (kills chat-lists, Status/Calls tabs, feeds, contact info…),
             // and list-screen markers are double-checked after parsing.

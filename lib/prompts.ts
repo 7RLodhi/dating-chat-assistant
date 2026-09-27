@@ -119,6 +119,23 @@ export function buildRegisterCorrection(register: HindiRegister): string {
   return `\n\nCORRECTION: your previous attempt used the wrong Hindi pronoun register. Every suggestion must use ONLY ${register}-forms (${use}). Using ${avoid} is not allowed.`;
 }
 
+// Perfect-participle + "hoon/hun" is ungrammatical in Hindi/Hinglish
+// ("dekha hoon", "kiya hun", "देखा हूँ") — the auxiliary must be "hai",
+// while "hoon" follows only raha/rahi/rahe ("kar raha hoon"). Same mechanical
+// drop-and-retry treatment as the pronoun register (see suggest route).
+// Deliberately narrow: colloquial-but-common forms ("gaya hoon") are NOT
+// flagged, only forms no native speaker would write.
+const VERB_FORM_VIOLATION =
+  /\b(dekh|dikh)(a|i)\s+(hoon|hun|hu)\b|\bkiy(a|e)\s+(hoon|hun|hu)\b|\bhu(a|i)\s+(hoon|hun|hu)\b|\bliy(a|e)\s+(hoon|hun|hu)\b|\bdiy(a|e)\s+(hoon|hun|hu)\b|\bbol(a|i)\s+(hoon|hun|hu)\b|\bsun(a|i)\s+(hoon|hun|hu)\b|\bkar(a|i)\s+(hoon|hun|hu)\b|\b(देखा|देखी|किया|हुआ|हुई|लिया|दिया|बोला|सुना)\s+हूँ\b/i;
+
+export function violatesVerbForm(text: string): boolean {
+  return VERB_FORM_VIOLATION.test(text);
+}
+
+export function buildVerbCorrection(): string {
+  return `\n\nCORRECTION: your previous attempt used ungrammatical Hindi/Hinglish verbs. Perfect forms pair with "hai", never "hoon/hun" ("dekha hai", "kiya hai", NOT "dekha hoon"). "hoon" follows ONLY raha/rahi/rahe ("kar raha hoon").`;
+}
+
 function buildRegisterSection(conversationText: string, language: Language): string {
   if (language === "english") return "";
   const register = detectHindiRegister(conversationText);
@@ -152,6 +169,7 @@ Rules:
 - If a "LEARNED TASTE" section is provided, it summarizes what this user demonstrably likes based on their own past votes: prefer the liked patterns and avoid the disliked ones, while the selected tone/goal still set the overall direction.
 - Follow the LANGUAGE instruction for which language/script to write the suggestions in. Write naturally and idiomatically in that language — never a stiff, word-for-word translation of an English sentence. For Hinglish specifically, code-mix the way real speakers do (mixing Hindi and English words/grammar in one sentence), not just English with a few Hindi words sprinkled in, and not full Hindi either.
 - Hindi/Hinglish pronoun register: mirror exactly the register the match uses — "aap" (formal), "tum" (friendly), or "tu" (very intimate). If they write "tum", reply with tum/tumhara/tumhe, never tu/tera/teri. Default to "tum" if unclear. Use correct grammar and standard Roman spellings (mujhe, kya, hai, nahi, bohot/bahut) — no broken constructions like "dekha hoon".
+- Hindi/Hinglish verbs: perfect forms pair with "hai", never "hoon/hun" ("dekha hai", "kiya hai", NOT "dekha hoon"); "hoon" follows only raha/rahi/rahe ("kar raha hoon").
 - The "tone" field of each suggestion must be exactly one of: casual, playful, witty, sincere, flirty, spicy — pick the closest fit. Never invent other labels.
 
 INDIAN CONTEXT (users and matches are primarily in India, on apps like Hinge, Bumble, Tinder, Aisle, TrulyMadly):

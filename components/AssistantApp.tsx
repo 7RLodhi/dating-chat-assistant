@@ -18,6 +18,7 @@ import NamePunDirectory from "./NamePunDirectory";
 import SideMenu, { SideMenuItem } from "./SideMenu";
 import DoubleMeaningSheet from "./DoubleMeaningSheet";
 import DarkFantasySheet from "./DarkFantasySheet";
+import DashboardSheet from "./DashboardSheet";
 import { trackEvent } from "@/lib/analytics";
 import OutcomeNudge from "./OutcomeNudge";
 import TasteHint from "./TasteHint";
@@ -831,6 +832,7 @@ export default function AssistantApp() {
         }}
       />
       <DoubleMeaningSheet open={openDeck === "doubleMeaning"} onClose={() => setOpenDeck(null)} />
+      <DashboardSheet open={openDeck === "dashboard"} onClose={() => setOpenDeck(null)} />
       <DarkFantasySheet
         open={openDeck === "darkFantasy"}
         onClose={() => setOpenDeck(null)}
