@@ -136,6 +136,12 @@ app to go back to tap-to-copy. Safeguards, all deliberate:
 
 ## Behavior notes
 
+- **Bubble hides with the panel:** opening the panel hides the bubble so it
+  never covers panel content or steals taps; closing the panel brings it back.
+- **Drop-to-close:** drag the bubble to the ✕ target at the bottom-center to
+  dismiss the overlay entirely (bubble + panel, service stops). Reopen anytime
+  from the app's Start button.
+
 - **Panel auto-dismiss:** the panel collapses by itself when you leave all
   supported apps (home, app switch, any other app). The bubble stays — tap it
   to reopen. Switching between two supported apps keeps the panel open but

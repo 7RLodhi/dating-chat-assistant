@@ -17,6 +17,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.graphics.Outline
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.view.ViewOutlineProvider
 import android.widget.AdapterView
@@ -51,6 +52,10 @@ class OverlayService : Service() {
     private var panel: View? = null
     private var bubbleParams: WindowManager.LayoutParams? = null
     private var panelParams: WindowManager.LayoutParams? = null
+    /** Drop-to-close target, visible only while the bubble is being dragged. */
+    private var trash: View? = null
+    private var trashParams: WindowManager.LayoutParams? = null
+    private var trashHover = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -145,15 +150,28 @@ class OverlayService : Service() {
                 MotionEvent.ACTION_MOVE -> {
                     val dx = event.rawX.toInt() - downX
                     val dy = event.rawY.toInt() - downY
-                    if (dx * dx + dy * dy > 100) moved = true
-                    p.x = startX + dx
-                    p.y = startY + dy
-                    windowManager.updateViewLayout(bubble, p)
+                    if (!moved && dx * dx + dy * dy > 100) {
+                        moved = true
+                        showTrash()
+                    }
+                    if (moved) {
+                        p.x = startX + dx
+                        p.y = startY + dy
+                        windowManager.updateViewLayout(bubble, p)
+                        updateTrashHover(event.rawX.toInt(), event.rawY.toInt())
+                    }
                     true
                 }
                 MotionEvent.ACTION_UP -> {
+                    val dropOnTrash = trashHover
+                    hideTrash()
                     if (!moved) togglePanel()
+                    else if (dropOnTrash) stopOverlayCompletely()
                     true
+                }
+                MotionEvent.ACTION_CANCEL -> {
+                    hideTrash()
+                    false
                 }
                 else -> false
             }
@@ -292,10 +310,85 @@ class OverlayService : Service() {
         }
     }
 
+    /**
+     * Messenger-style drop-to-close: while the bubble is dragged, a ✕ target
+     * sits at the bottom-center; dropping the bubble on it stops the overlay
+     * entirely (reopen from the app's Start button). The target is
+     * NOT_TOUCHABLE — purely visual, it never intercepts touches.
+     */
+    private fun showTrash() {
+        if (trash != null) return
+        val density = resources.displayMetrics.density
+        val sizePx = (72 * density).roundToInt()
+        val view = TextView(this).apply {
+            text = "✕"
+            gravity = Gravity.CENTER
+            textSize = 28f
+            setTextColor(getColor(android.R.color.white))
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(getColor(android.R.color.darker_gray))
+            }
+        }
+        val metrics = resources.displayMetrics
+        trashParams = WindowManager.LayoutParams(
+            sizePx,
+            sizePx,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+            PixelFormat.TRANSLUCENT,
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = (metrics.widthPixels - sizePx) / 2
+            y = metrics.heightPixels - sizePx - (110 * density).roundToInt()
+        }
+        trash = view
+        trashHover = false
+        windowManager.addView(view, trashParams)
+    }
+
+    private fun updateTrashHover(rawX: Int, rawY: Int) {
+        val view = trash ?: return
+        val p = trashParams ?: return
+        val over = rawX in p.x..(p.x + p.width) && rawY in p.y..(p.y + p.height)
+        if (over != trashHover) {
+            trashHover = over
+            val scale = if (over) 1.3f else 1f
+            view.scaleX = scale
+            view.scaleY = scale
+            (view.background as? GradientDrawable)?.setColor(
+                getColor(if (over) android.R.color.holo_red_dark else android.R.color.darker_gray)
+            )
+        }
+    }
+
+    private fun hideTrash() {
+        trash?.let { runCatching { windowManager.removeView(it) } }
+        trash = null
+        trashParams = null
+        trashHover = false
+    }
+
+    /** Full dismiss: removes bubble + panel and stops the service. */
+    private fun stopOverlayCompletely() {
+        hideTrash()
+        panel?.let { runCatching { windowManager.removeView(it) } }
+        panel = null
+        bubble?.let { runCatching { windowManager.removeView(it) } }
+        bubble = null
+        bubbleParams = null
+        panelParams = null
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
+    }
+
     private fun togglePanel() {
         if (panel != null) {
             windowManager.removeView(panel)
             panel = null
+            // Bubble hid while the panel was open — bring it back.
+            bubble?.visibility = View.VISIBLE
             return
         }
         val inflater = LayoutInflater.from(this)
@@ -354,6 +447,9 @@ class OverlayService : Service() {
         makeResizable(panelView.findViewById(R.id.resizeHandle), panelParams!!)
         makeDraggable(panelView.findViewById(R.id.panelHeader), panelParams!!)
         windowManager.addView(panel, panelParams)
+        // The bubble would sit under/over the panel and steal taps — hide it
+        // until the panel closes.
+        bubble?.visibility = View.GONE
         loadSuggestions()
     }
 
@@ -657,6 +753,7 @@ class OverlayService : Service() {
 
     override fun onDestroy() {
         ChatBus.removeForegroundListener(foregroundListener)
+        hideTrash()
         bubble?.let { runCatching { windowManager.removeView(it) } }
         panel?.let { runCatching { windowManager.removeView(it) } }
         bubble = null
