@@ -205,6 +205,14 @@ class MainActivity : AppCompatActivity() {
         updateStartButton()
         ChatBus.loadFromPrefs()
         renderMatchList()
+        // Keep the bubble out of our own UI (the overlay ignores our package
+        // by design, so activities announce themselves explicitly).
+        if (OverlayService.isRunning(this)) {
+            startService(
+                android.content.Intent(this, OverlayService::class.java)
+                    .setAction(OverlayService.ACTION_HIDE_BUBBLE)
+            )
+        }
     }
 
     /**

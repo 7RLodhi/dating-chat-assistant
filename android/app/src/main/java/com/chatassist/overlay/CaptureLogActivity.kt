@@ -28,6 +28,12 @@ class CaptureLogActivity : AppCompatActivity() {
         super.onResume()
         ChatBus.loadFromPrefs()
         render()
+        if (OverlayService.isRunning(this)) {
+            startService(
+                android.content.Intent(this, OverlayService::class.java)
+                    .setAction(OverlayService.ACTION_HIDE_BUBBLE)
+            )
+        }
     }
 
     private fun render() {

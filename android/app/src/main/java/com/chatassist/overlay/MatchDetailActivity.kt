@@ -63,6 +63,12 @@ class MatchDetailActivity : AppCompatActivity() {
             return
         }
         renderAll()
+        if (OverlayService.isRunning(this)) {
+            startService(
+                android.content.Intent(this, OverlayService::class.java)
+                    .setAction(OverlayService.ACTION_HIDE_BUBBLE)
+            )
+        }
     }
 
     private fun renderAll() {

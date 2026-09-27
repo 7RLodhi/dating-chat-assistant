@@ -43,8 +43,16 @@ class OverlayService : Service() {
 
     companion object {
         const val ACTION_START = "com.chatassist.overlay.START"
+        const val ACTION_HIDE_BUBBLE = "com.chatassist.overlay.HIDE_BUBBLE"
         private const val NOTIF_ID = 1
         private const val CHANNEL_ID = "bubble"
+
+        /** True when the overlay service is currently alive. */
+        fun isRunning(ctx: android.content.Context): Boolean {
+            val manager = ctx.getSystemService(android.content.Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+            return manager.getRunningServices(Int.MAX_VALUE)
+                .any { it.service.className == OverlayService::class.java.name }
+        }
     }
 
     private lateinit var windowManager: WindowManager
@@ -68,10 +76,20 @@ class OverlayService : Service() {
      * — home, app switch, other apps, even our own app screens — the panel
      * collapses and the bubble hides. It reappears on its own the moment a
      * supported dating app comes forward; nothing to tap.
+     *
+     * Two packages are exempt and leave everything untouched: our own (panel
+     * / trash windows must never collapse the panel or steal visibility)
+     * and input methods (the keyboard belongs to the chat session — hiding
+     * the bubble while typing would break tap-to-paste exactly when it's
+     * needed, and the panel must stay up alongside it).
      */
+    private fun isExemptForeground(pkg: String): Boolean =
+        pkg == packageName || "inputmethod" in pkg.lowercase()
+
     private val foregroundListener: (String) -> Unit = { pkg ->
         mainHandler.post {
-            if (pkg != packageName && pkg !in ChatBus.SUPPORTED_PACKAGES) {
+            if (isExemptForeground(pkg)) return@post
+            if (pkg !in ChatBus.SUPPORTED_PACKAGES) {
                 if (panel != null) togglePanel()
             }
             syncBubbleVisibility()
@@ -117,6 +135,15 @@ class OverlayService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Our own activities send this when they come forward so the bubble
+        // never floats over our own UI (the foreground listener ignores our
+        // package on purpose — panel/trash windows must not trigger it).
+        if (intent?.action == ACTION_HIDE_BUBBLE) {
+            mainHandler.post {
+                if (panel == null) bubble?.visibility = View.GONE
+            }
+            return START_STICKY
+        }
         startForeground(NOTIF_ID, buildNotification())
         if (bubble == null) showBubble()
         return START_STICKY
