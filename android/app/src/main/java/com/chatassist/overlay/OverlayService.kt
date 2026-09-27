@@ -117,10 +117,12 @@ class OverlayService : Service() {
     }
 
     /**
-     * Auto-refresh on chat switch: a newly published chat reloads the panel
-     * (rows + suggestions) without a manual Refresh. Same-chat updates only
-     * refresh the rows — suggestions wait for an explicit Refresh so every
-     * incoming message doesn't burn an API call.
+     * Auto-refresh on chat switch: a newly published DIFFERENT chat reloads
+     * the panel (rows + suggestions) without a manual Refresh. Same-chat
+     * updates (scrolling — RecyclerView recycles off-screen rows so the
+     * captured slice changes — or new messages) only refresh the rows.
+     * Suggestions wait for an explicit Refresh, otherwise every scroll stop
+     * burns an API call and flickers the cards while you're reading.
      */
     private var renderedKey: String? = null
     private var pendingKey: String? = null
@@ -128,9 +130,11 @@ class OverlayService : Service() {
     private val snapshotListener: (String) -> Unit = {
         mainHandler.post {
             if (panel == null) return@post
+            val key = ChatBus.latestKey
             refreshChatSection()
+            if (key == renderedKey) return@post
             if (loadingSuggestions) {
-                pendingKey = ChatBus.latestKey
+                pendingKey = key
             } else {
                 loadSuggestions()
             }

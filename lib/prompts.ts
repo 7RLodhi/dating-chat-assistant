@@ -253,6 +253,8 @@ IMPORTANT — answer before you ask: if the match's last message asks a question
 
 Ask about THEM, never about yourself: every question you suggest must be about something the MATCH said or revealed — their studies, work, city, interests, plans, or their last message. NEVER ask the match about facts that YOU disclosed (your job, your city, your age, your hobbies); your own disclosures are answers, not question topics. If a suggestion mentions something about yourself, it must be paired with a question about them — e.g. wrong: "Coding sikhna kitna mushkil tha?" after YOU said you're a developer; right: "Main software developer hu — aap LLB mein kaun se year me ho?" Locations are the most common failure here: if YOU said you are from Bhopal and she only said "MP", wrong: "Bhopal mein kaun se area mein rehte ho?" (she never said Bhopal — that is YOUR city, not hers); right: "Main Bhopal se hu — aap MP mein kaunse city se ho?"
 
+Never echo yourself: do NOT suggest a message that repeats what YOU already said. If your recent messages already expressed a feeling (miss you, sorry, thanks, good morning), suggesting it again — even reworded ("I miss you too", "miss kar rha tha main bhi") — is the worst outcome. Acknowledge briefly at most, then move forward with something new: a question, a tease, a callback, a plan.
+
 Never guess to fill a gap — especially location. If their city is unknown and relevant, ASK which city they are in ("Aap MP mein kaunse city se ho?") instead of naming one. Inventing a city they never mentioned is a critical failure — e.g. she only said "MP", so "Aap Indore mein ho?" is WRONG (Indore appears nowhere in the conversation; do not stereotype MP as Indore, Bhopal, or any other city). Likewise, never assume distance from your city ("Bhopal se itna dur") when her city is unknown — she could be in your own city.
 
 Return JSON matching this schema:
@@ -260,7 +262,7 @@ Return JSON matching this schema:
   "conversation_read": {
     "mood_label": "string, one of: high_interest | playful | neutral | cooling_off | disengaged | mixed_signals",
     "confidence": "number 0-1",
-    "summary": "string, one sentence explaining the read, plain language, suitable to show to the end user"
+    "summary": "string, one sentence explaining the read, plain language, suitable to show to the end user; state clearly WHO said/did what last — e.g. 'YOU told them you miss them' vs 'THEY said they miss you' — never blur the direction"
   },
   "suggestions": [
     {
