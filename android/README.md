@@ -140,10 +140,9 @@ app to go back to tap-to-copy. Safeguards, all deliberate:
   in front — nowhere else, not even over this app's own screens. Open Tinder
   and it appears; go home and it's gone. No manual toggling. It also hides
   while its own panel is open so it never covers panel content.
-- **Best-effort auto-start:** opening a supported app while the overlay is
-  down tries to start the bubble directly (works on older Android). Where the
-  OS blocks background starts, you get one tap-to-start notification instead
-  (max one per 10 min) — after a reboot or drop-to-close, at most one tap.
+- **Explicit start/stop:** the service runs only after you tap Start, and
+  stays dead after drop-to-close — opening a dating app never restarts it on
+  its own, so nothing runs (or drains) behind your back.
 - **Drop-to-close:** drag the bubble to the ✕ target at the bottom-center to
   dismiss the overlay entirely (bubble + panel, service stops). Reopen anytime
   from the app's Start button.

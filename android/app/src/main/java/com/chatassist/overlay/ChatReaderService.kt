@@ -1,18 +1,10 @@
 package com.chatassist.overlay
 
 import android.accessibilityservice.AccessibilityService
-import android.app.ActivityManager
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
-import android.content.Intent
-import android.content.pm.PackageManager
 import android.graphics.Rect
-import android.os.Build
 import android.os.Bundle
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
-import androidx.core.app.NotificationCompat
 import com.chatassist.overlay.parsers.ChatParser
 
 /**
@@ -33,14 +25,9 @@ class ChatReaderService : AccessibilityService() {
 
     companion object {
         private const val DEBOUNCE_MS = 1500L
-        private const val START_RETRY_MS = 60_000L
-        private const val NOTIFY_GAP_MS = 10 * 60_000L
-        private const val START_CHANNEL_ID = "bubble_start"
     }
 
     private var lastPublishAt = 0L
-    private var lastStartAttemptAt = 0L
-    private var lastStartNotifyAt = 0L
 
     override fun onServiceConnected() {
         // Config comes from res/xml/accessibility_service_config.xml.
@@ -128,9 +115,6 @@ class ChatReaderService : AccessibilityService() {
         val pkg = event?.packageName?.toString() ?: return
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             ChatBus.notifyForeground(pkg)
-            // Supported app opened while the overlay is down (first run,
-            // reboot, after drop-to-close): try to bring the bubble up.
-            if (pkg in ChatBus.SUPPORTED_PACKAGES) ensureOverlayRunning()
         }
         if (pkg !in ChatBus.SUPPORTED_PACKAGES) return
         if (event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED &&
@@ -176,57 +160,5 @@ class ChatReaderService : AccessibilityService() {
 
     override fun onInterrupt() {
         // Nothing to clean up.
-    }
-
-    /**
-     * Best-effort bubble auto-start. Works outright on older Android and in
-     * the rare allowed cases; on new versions a background start is blocked
-     * by the OS, so fall back to a tap-to-start notification (throttled).
-     * Either way the user never digs through settings — one tap at most.
-     */
-    private fun ensureOverlayRunning() {
-        if (isOverlayRunning()) return
-        val now = System.currentTimeMillis()
-        if (now - lastStartAttemptAt < START_RETRY_MS) return
-        lastStartAttemptAt = now
-        val intent = Intent(this, OverlayService::class.java).setAction(OverlayService.ACTION_START)
-        val started = runCatching {
-            if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent) else startService(intent)
-            true
-        }.getOrDefault(false)
-        if (!started) notifyToStartBubble(now)
-    }
-
-    private fun isOverlayRunning(): Boolean {
-        val manager = getSystemService(ACTIVITY_SERVICE) as ActivityManager
-        return manager.getRunningServices(Int.MAX_VALUE)
-            .any { it.service.className == OverlayService::class.java.name }
-    }
-
-    private fun notifyToStartBubble(now: Long) {
-        if (Build.VERSION.SDK_INT >= 33 &&
-            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-        ) return
-        if (now - lastStartNotifyAt < NOTIFY_GAP_MS) return
-        lastStartNotifyAt = now
-        val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-        if (Build.VERSION.SDK_INT >= 26) {
-            nm.createNotificationChannel(
-                NotificationChannel(START_CHANNEL_ID, "Bubble starter", NotificationManager.IMPORTANCE_DEFAULT)
-            )
-        }
-        val openApp = PendingIntent.getActivity(
-            this, 0,
-            Intent(this, MainActivity::class.java),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-        val notif = NotificationCompat.Builder(this, START_CHANNEL_ID)
-            .setContentTitle(getString(R.string.app_name))
-            .setContentText("Dating app opened — tap to start the bubble")
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentIntent(openApp)
-            .setAutoCancel(true)
-            .build()
-        nm.notify(2, notif)
     }
 }
