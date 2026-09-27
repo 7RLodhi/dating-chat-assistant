@@ -217,22 +217,25 @@ class ChatReaderService : AccessibilityService() {
             // and list-screen markers are double-checked after parsing.
             if (!parser.hasChatInput(root)) return false
             val text = parser.parse(root)
-            if (text.isNotBlank()) {
-                val title = parser.extractTitle(root)
-                    ?.replace("|", " ")?.trim()?.take(40)?.takeIf { it.isNotBlank() }
-                if (parser.isListScreen(title, text)) return false
-                val key = if (title != null) "$pkg|$title" else pkg
-                ChatBus.publish(
-                    key,
-                    ChatBus.ChatSnapshot(
-                        appPackage = pkg,
-                        title = title,
-                        text = text,
-                        at = System.currentTimeMillis(),
-                    ),
-                )
-                return true
-            }
+            // Empty chats publish too (title only): switching to a fresh,
+            // message-less conversation must move latestKey and yield
+            // openers — otherwise the panel sticks on the previous match.
+            // Only a title-less empty read means nothing at all.
+            val title = parser.extractTitle(root)
+                ?.replace("|", " ")?.trim()?.take(40)?.takeIf { it.isNotBlank() }
+            if (text.isBlank() && title == null) return false
+            if (parser.isListScreen(title, text)) return false
+            val key = if (title != null) "$pkg|$title" else pkg
+            ChatBus.publish(
+                key,
+                ChatBus.ChatSnapshot(
+                    appPackage = pkg,
+                    title = title,
+                    text = text,
+                    at = System.currentTimeMillis(),
+                ),
+            )
+            return true
         } catch (_: Exception) {
             // A dating-app UI update must never crash the service.
             // Next event will retry automatically.

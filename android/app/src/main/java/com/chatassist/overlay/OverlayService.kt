@@ -856,15 +856,17 @@ class OverlayService : Service() {
         )
         renderedKey = key
         pendingKey = null
-        if (text.isBlank()) {
+        if (snapshot == null) {
             chatLabel.text = ""
             moodText.text = "No chat text captured yet — open a conversation in a supported dating app."
             return
         }
-        // Empty window (only your messages so far, match hasn't replied):
-        // show opening lines + name puns instead of replies to nothing.
+        // Empty window (only your messages so far, match hasn't replied — or
+        // a fresh message-less chat): opening lines + name puns instead of
+        // replies to nothing. A known chat title is enough; only a
+        // title-less blank means nothing was captured at all.
         val opener = !hasMatchContent(text)
-        chatLabel.text = ChatBus.labelFor(key, snapshot!!)
+        chatLabel.text = ChatBus.labelFor(key, snapshot)
         // Smart refresh: same request as last time → re-render the stored
         // batch instantly instead of burning another API call. The taste
         // hash is part of the fingerprint so new votes regenerate.

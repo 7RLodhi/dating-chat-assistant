@@ -202,7 +202,7 @@ open class ChatParser(val appPackage: String) {
         private val GENERIC_SCREEN_TITLES = setOf(
             "Status", "Calls", "Updates", "Communities", "Locked chats",
             "Chat", "Discover", "Stories", "Spotlight", "Search", "Settings",
-            "Camera", "Archived",
+            "Camera", "Archived", "New Chat", "New Snap",
         )
     }
 }

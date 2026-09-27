@@ -148,7 +148,23 @@ object ChatBus {
         val oldKey = snapshots.keys.firstOrNull { it.equals(key, ignoreCase = true) }
         val existing = oldKey?.let { snapshots[it] }
         // Ignore duplicate snapshots so we don't spam the backend.
+        // (latestKey untouched: identical text means nothing moved.)
         if (existing != null && existing.text == snapshot.text) return
+        if (existing != null && existing.text != snapshot.text) {
+            // Anti-shrink: mid-transition trees and scrolled slices capture
+            // partial slices ("Ok" alone); they must never clobber a fuller
+            // history. Keep the old text, but still move latestKey (the user
+            // IS viewing this chat) so the panel renders the full version.
+            val oldRows = existing.text.lineSequence().count { it.isNotBlank() }
+            val newRows = snapshot.text.lineSequence().count { it.isNotBlank() }
+            if (oldRows >= 3 && newRows < oldRows) {
+                latestKey = key
+                for (listener in snapshotListeners) {
+                    runCatching { listener(key) }
+                }
+                return
+            }
+        }
         if (oldKey != null) snapshots.remove(oldKey)
         snapshots.remove(key)
         // Preserve hand-added notes, facts and suggestions across re-captures.
