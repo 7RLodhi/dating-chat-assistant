@@ -214,7 +214,7 @@ function buildFactsSection(conversationText: string): string {
   const userBlock = userLines.length > 0 ? userLines.map((l) => `- ${l}`).join("\n") : "(none yet)";
   const matchBlock = matchLines.length > 0 ? matchLines.map((l) => `- ${l}`).join("\n") : "(none yet)";
   return `
-YOUR MESSAGES (things YOU already told them — NEVER ask the match about any of these topics; they are YOUR information, not question material):
+YOUR MESSAGES (things YOU already told them — NEVER ask the match about any of these topics; they are YOUR information, not question material. When checking who said or felt something, trust ONLY these two blocks — never credit the match with feelings from your lines):
 ${userBlock}
 
 MATCH'S MESSAGES (the ONLY source for your questions — ask about THESE):
@@ -255,6 +255,8 @@ Ask about THEM, never about yourself: every question you suggest must be about s
 
 Never echo yourself: do NOT suggest a message that repeats what YOU already said. If your recent messages already expressed a feeling (miss you, sorry, thanks, good morning), suggesting it again — even reworded ("I miss you too", "miss kar rha tha main bhi") — is the worst outcome. Acknowledge briefly at most, then move forward with something new: a question, a tease, a callback, a plan.
 
+Feelings have a direction — get it right: if YOU said "I miss you", writing as if THEY said it ("Aap mujhe miss kar rahe ho", "tumhara miss you") is WRONG unless MATCH'S MESSAGES below actually contain it. Before writing any line about who feels what, verify it against MATCH'S MESSAGES; if only YOUR lines carry the feeling, the suggestion must keep it on your side ("Main tumhe miss kar rha tha" is right when you said it, "Aap mujhe miss kar rahe ho" is wrong when she didn't).
+
 Never guess to fill a gap — especially location. If their city is unknown and relevant, ASK which city they are in ("Aap MP mein kaunse city se ho?") instead of naming one. Inventing a city they never mentioned is a critical failure — e.g. she only said "MP", so "Aap Indore mein ho?" is WRONG (Indore appears nowhere in the conversation; do not stereotype MP as Indore, Bhopal, or any other city). Likewise, never assume distance from your city ("Bhopal se itna dur") when her city is unknown — she could be in your own city.
 
 Return JSON matching this schema:
@@ -294,6 +296,11 @@ export function buildOpenerUserPrompt(params: {
     ? `NAME-PUN OPENER: "${namePunHint.trim()}"
 Include this EXACT line as one of the 5 suggestions, tagged with "approach": "name pun". You may only make minimal cosmetic tweaks (capitalization, punctuation, a word swapped for the selected language/tone if truly necessary) — do NOT rewrite it into a different joke or lose the specific wordplay it's built on.`
     : "";
+  // This audience is India-first: openers must always carry Hinglish warmth.
+  const hinglishFloor =
+    language === "english"
+      ? ""
+      : `LANGUAGE MIX (hard requirement): at least 2 of the 5 openers MUST be Hinglish — casual roman-script Hindi-English code-mix the way young urban Indians actually text (e.g. "kya haal, weekend plans kya hain"). The rest follow the LANGUAGE instruction. Count before returning; if fewer than 2 are Hinglish, rewrite until there are.`;
   return `Generate opening message suggestions for a dating app match.
 ${nameLine}
 MATCH'S PROFILE INFO (as provided by the user; may be partial or empty):
@@ -305,6 +312,7 @@ ${profileText}
 DESIRED TONE: ${tone} — ${TONE_DESCRIPTIONS[tone]}
 GOAL: ${goal} — ${GOAL_DESCRIPTIONS[goal]}
 LANGUAGE: ${language} — ${openerLanguageNote}
+${hinglishFloor}
 ${buildStyleSection(styleExamples)}
 ${buildTasteSection(tasteProfile)}
 Generate 5 distinct opening message options. Vary the approach across the 5 (don't make them all near-duplicates of each other). At least one should directly reference something specific from the profile info if any was given.
@@ -350,7 +358,7 @@ Use these ONLY to infer patterns — capitalization, punctuation, typical messag
 // Splitting "does a pun exist for this name" into its own small, focused
 // call makes it far more reliable, at the cost of one extra request.
 
-export const NAME_PUN_SYSTEM_PROMPT = `You determine whether a genuinely clever, tasteful pun or wordplay exists for a given first name, based on how it sounds, is spelled, or a common meaning/association. Most names do NOT have a good natural pun — that's the normal, expected answer. Only say yes if you're confident it would land well and isn't a stretch.`;
+export const NAME_PUN_SYSTEM_PROMPT = `You determine whether a genuinely clever, tasteful pun or wordplay exists for a given first name, based on how it sounds, is spelled, or a common meaning/association. Most names do NOT have a good natural pun — that's the normal, expected answer. Only say yes if you're confident it would land well and isn't a stretch. The audience is Indian dating-app users: if has_pun is true, write pun_line in Hinglish (casual roman-script Hindi-English mix) — never plain English.`;
 
 export function buildNamePunPrompt(name: string): string {
   return `Name: "${name}"
@@ -360,7 +368,7 @@ Is there a genuinely natural, tasteful pun or wordplay based on this specific na
 Return JSON:
 {
   "has_pun": true or false,
-  "pun_line": "string — if has_pun is true, a short, natural, dating-app-appropriate opener line built around the pun. If has_pun is false, an empty string."
+  "pun_line": "string — if has_pun is true, a short, natural, dating-app-appropriate opener line built around the pun, written in Hinglish (casual roman-script Hindi-English mix, never plain English). If has_pun is false, an empty string."
 }`;
 }
 

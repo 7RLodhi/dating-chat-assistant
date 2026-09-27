@@ -6,7 +6,7 @@
 //   - everything else: passthrough
 // Bump CACHE_NAME with each app version (see lib/version.ts).
 
-const CACHE_NAME = "chat-assist-v09.26.026";
+const CACHE_NAME = "chat-assist-v09.26.027";
 
 self.addEventListener("install", (event) => {
   self.skipWaiting();
