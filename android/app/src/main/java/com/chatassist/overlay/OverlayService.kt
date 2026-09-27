@@ -56,6 +56,8 @@ class OverlayService : Service() {
     private var trash: View? = null
     private var trashParams: WindowManager.LayoutParams? = null
     private var trashHover = false
+    /** Pixel size of the bubble (set when its appearance is applied). */
+    private var bubbleSizePx = 0
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -158,7 +160,7 @@ class OverlayService : Service() {
                         p.x = startX + dx
                         p.y = startY + dy
                         windowManager.updateViewLayout(bubble, p)
-                        updateTrashHover(event.rawX.toInt(), event.rawY.toInt())
+                        updateTrashHover()
                     }
                     true
                 }
@@ -190,6 +192,7 @@ class OverlayService : Service() {
         val params = bubbleParams ?: return
 
         val sizePx = (Prefs.bubbleSizeDp(this) * resources.displayMetrics.density).roundToInt()
+        bubbleSizePx = sizePx
         params.width = sizePx
         params.height = sizePx
         view.alpha = Prefs.transparencyPct(this) / 100f
@@ -348,10 +351,16 @@ class OverlayService : Service() {
         windowManager.addView(view, trashParams)
     }
 
-    private fun updateTrashHover(rawX: Int, rawY: Int) {
+    private fun updateTrashHover() {
         val view = trash ?: return
-        val p = trashParams ?: return
-        val over = rawX in p.x..(p.x + p.width) && rawY in p.y..(p.y + p.height)
+        val tp = trashParams ?: return
+        val bp = bubbleParams ?: return
+        // Rectangle overlap of the two VISIBLE windows — not the finger
+        // position, which sits wherever the bubble was grabbed and can be a
+        // full bubble-size away from its center. Finger-point testing only
+        // fired at the target's edge; this fires when they visually overlap.
+        val over = bp.x < tp.x + tp.width && bp.x + bubbleSizePx > tp.x &&
+            bp.y < tp.y + tp.height && bp.y + bubbleSizePx > tp.y
         if (over != trashHover) {
             trashHover = over
             val scale = if (over) 1.3f else 1f

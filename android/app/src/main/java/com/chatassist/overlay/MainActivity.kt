@@ -49,11 +49,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var matchList: LinearLayout
     private lateinit var matchEmptyHint: TextView
 
-    /** Keys with their detail section expanded. Survives re-renders. */
-    private val expandedKeys = mutableSetOf<String>()
-    /** Keys with a summary fetch in flight (double-tap guard). */
-    private val loadingFactsKeys = mutableSetOf<String>()
-
     private val pickImage = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri == null) {
             syncAppearanceUi() // cancelled: revert the radio to the saved style
@@ -245,12 +240,8 @@ class MainActivity : AppCompatActivity() {
             textSize = 13f
             setTextColor(getColor(android.R.color.darker_gray))
         }
-        val detail = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            visibility = if (key in expandedKeys) View.VISIBLE else View.GONE
-        }
-        val toggleRowHint = TextView(this).apply {
-            text = if (key in expandedKeys) "Tap to collapse ▲" else "Tap for chat + summary ▼"
+        val openHint = TextView(this).apply {
+            text = "Tap to open ▸"
             textSize = 12f
             setTextColor(getColor(android.R.color.darker_gray))
         }
@@ -259,32 +250,21 @@ class MainActivity : AppCompatActivity() {
             val raw = ChatBus.get(key)?.factsJson
             val summary = raw?.let { runCatching { ApiClient.buildFactSheet(JSONObject(it)).summary }.getOrNull() }
             summarySnippet.text =
-                if (summary.isNullOrBlank()) "📋 No summary yet — tap to expand."
+                if (summary.isNullOrBlank()) "📋 No summary yet — tap to open."
                 else "📋 $summary"
         }
         refreshSnippet()
 
-        if (key in expandedKeys) renderMatchDetail(detail, key)
-
-        val toggle = {
-            if (key in expandedKeys) {
-                expandedKeys.remove(key)
-                detail.visibility = View.GONE
-                detail.removeAllViews()
-                toggleRowHint.text = "Tap for chat + summary ▼"
-            } else {
-                expandedKeys.add(key)
-                detail.visibility = View.VISIBLE
-                renderMatchDetail(detail, key)
-                toggleRowHint.text = "Tap to collapse ▲"
-            }
+        card.setOnClickListener {
+            startActivity(
+                android.content.Intent(this, MatchDetailActivity::class.java)
+                    .putExtra(MatchDetailActivity.EXTRA_KEY, key)
+            )
         }
-        card.setOnClickListener { toggle() }
         card.addView(header)
         card.addView(preview)
         card.addView(summarySnippet)
-        card.addView(toggleRowHint)
-        card.addView(detail)
+        card.addView(openHint)
         return card
     }
 
@@ -296,164 +276,6 @@ class MainActivity : AppCompatActivity() {
         return line
     }
 
-    private fun renderMatchDetail(detail: LinearLayout, key: String) {
-        detail.removeAllViews()
-        val snapshot = ChatBus.get(key) ?: return
-        // Summary first…
-        detail.addView(sectionLabel("📋 Summary"))
-        val summaryBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        detail.addView(summaryBox)
-        renderStoredSummaryInto(summaryBox, key)
-        detail.addView(Button(this).apply {
-            text = "Load summary"
-            setOnClickListener { loadSummaryFor(key, summaryBox) }
-        })
-        // …then your hand-added profile details (feeds future summaries)…
-        detail.addView(sectionLabel("✏️ Profile details"))
-        detail.addView(smallGrey("Add what the overlay missed — her city, age, job, etc. Merges into the next summary."))
-        val noteEdit = android.widget.EditText(this).apply {
-            setText(snapshot.userNote.orEmpty())
-            hint = "e.g. 24, teacher, loves trekking…"
-            minLines = 2
-            textSize = 14f
-        }
-        detail.addView(noteEdit)
-        detail.addView(Button(this).apply {
-            text = "Save details"
-            setOnClickListener {
-                ChatBus.updateNote(key, noteEdit.text.toString().trim())
-                android.widget.Toast.makeText(this@MainActivity, "Saved — used in future summaries", android.widget.Toast.LENGTH_SHORT).show()
-                renderMatchList()
-            }
-        })
-        // …chat rows last.
-        detail.addView(sectionLabel("💬 Chat"))
-        val lines = snapshot.text.lineSequence().map { it.trim() }
-            .filter { it.isNotEmpty() }.toList().takeLast(30)
-        if (lines.isEmpty()) {
-            detail.addView(smallGrey("No chat text captured yet."))
-        } else {
-            for (line in lines) {
-                val upper = line.uppercase()
-                val isUser = upper.startsWith("[USER]")
-                val isMatch = upper.startsWith("[MATCH]")
-                val body = if (isUser || isMatch) line.substringAfter("]:", line).trim() else line
-                if (body.isEmpty()) continue
-                detail.addView(TextView(this).apply {
-                    text = if (isUser) "You: $body" else "Match: $body"
-                    textSize = 13f
-                    setPadding(4, 2, 4, 2)
-                    setTextColor(
-                        if (isUser) getColor(android.R.color.holo_blue_dark)
-                        else getColor(android.R.color.black)
-                    )
-                })
-            }
-        }
-    }
-
-    private fun sectionLabel(text: String): TextView = TextView(this).apply {
-        this.text = text
-        textSize = 14f
-        setTextColor(getColor(R.color.ink))
-        setPadding(0, 8, 0, 2)
-    }.also { it.setTypeface(it.typeface, android.graphics.Typeface.BOLD) }
-
-    private fun smallGrey(text: String): TextView = TextView(this).apply {
-        this.text = text
-        textSize = 12f
-        setTextColor(getColor(android.R.color.darker_gray))
-    }
-
-    private fun renderStoredSummaryInto(box: LinearLayout, key: String) {
-        box.removeAllViews()
-        val snapshot = ChatBus.get(key)
-        val note = snapshot?.userNote.orEmpty()
-        if (note.isNotBlank()) {
-            box.addView(TextView(this).apply {
-                text = "Your notes"
-                textSize = 11f
-                setTextColor(getColor(android.R.color.darker_gray))
-            })
-            box.addView(TextView(this).apply {
-                text = note
-                textSize = 13f
-                setTextColor(getColor(android.R.color.black))
-                setPadding(0, 0, 0, 6)
-            })
-        }
-        val raw = snapshot?.factsJson
-        if (raw.isNullOrBlank()) {
-            box.addView(smallGrey("No summary yet — tap Load summary. Uses the same learned sheet as the overlay panel."))
-            return
-        }
-        val sheet = runCatching { ApiClient.buildFactSheet(JSONObject(raw)) }.getOrNull()
-        if (sheet == null || (sheet.summary.isBlank() && sheet.rows.isEmpty())) {
-            box.addView(smallGrey("Saved summary looks empty — tap Load summary to retry."))
-            return
-        }
-        if (sheet.summary.isNotBlank()) {
-            box.addView(TextView(this).apply {
-                text = sheet.summary
-                textSize = 13f
-                setTextColor(getColor(android.R.color.black))
-                setPadding(0, 0, 0, 6)
-            })
-        }
-        for ((label, value) in sheet.rows) {
-            box.addView(TextView(this).apply {
-                text = label
-                textSize = 11f
-                setTextColor(getColor(android.R.color.darker_gray))
-            })
-            box.addView(TextView(this).apply {
-                text = value
-                textSize = 13f
-                setTextColor(getColor(android.R.color.black))
-                setPadding(0, 0, 0, 4)
-            })
-        }
-    }
-
-    /** Fetches the learned sheet and stores it on the shared snapshot — the panel reads the same data. */
-    private fun loadSummaryFor(key: String, box: LinearLayout) {
-        if (key in loadingFactsKeys) return
-        val snapshot = ChatBus.get(key)
-        val text = snapshot?.text.orEmpty()
-        if (text.isBlank()) {
-            box.removeAllViews()
-            box.addView(smallGrey("No chat text to learn from yet."))
-            return
-        }
-        val stored = snapshot?.factsJson
-        if (!stored.isNullOrBlank() && snapshot?.factsText == text) {
-            renderStoredSummaryInto(box, key)
-            renderMatchList()
-            return
-        }
-        loadingFactsKeys.add(key)
-        box.removeAllViews()
-        box.addView(smallGrey("Learning summary…"))
-        val previous = stored?.let { runCatching { JSONObject(it) }.getOrNull() }
-        ApiClient.fetchFacts(
-            Prefs.backendUrl(this), text, previous,
-            callback = { result ->
-            loadingFactsKeys.remove(key)
-            result.fold(
-                onSuccess = { (json, _) ->
-                    ChatBus.updateFacts(key, json.toString(), text)
-                    if (!isFinishing && !isDestroyed) {
-                        renderStoredSummaryInto(box, key)
-                        renderMatchList()
-                    }
-                },
-                onFailure = { e ->
-                    box.removeAllViews()
-                    box.addView(smallGrey("Couldn't load summary: ${e.message} — retry with Load summary."))
-                },
-            )
-        }, bio = snapshot?.userNote.orEmpty())
-    }
 
     private fun appVersionName(): String {
         return try {
