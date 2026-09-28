@@ -102,7 +102,7 @@ async function callOpenAIForJSON<T>(params: {
     { role: "user", content: userPrompt },
   ];
 
-  const raw = await requestOpenAICompletion(apiKey, model, messages, temperature, maxTokens);
+  const raw = await requestOpenAICompletion(apiKey, model, messages, temperature, maxTokens, params.tier ?? "standard");
   const parsed = tryParseJSON<T>(raw);
   if (parsed) return parsed;
 
@@ -121,7 +121,8 @@ async function callOpenAIForJSON<T>(params: {
     model,
     retryMessages,
     temperature,
-    maxTokens
+    maxTokens,
+    params.tier ?? "standard"
   );
   const retryParsed = tryParseJSON<T>(retryRaw);
   if (retryParsed) return retryParsed;
@@ -134,10 +135,17 @@ async function requestOpenAICompletion(
   model: string,
   messages: { role: string; content: string }[],
   temperature: number,
-  maxTokens: number
+  maxTokens: number,
+  tier: ModelTier = "standard"
 ): Promise<string> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15000);
+  // Premium models think longer — give them room. Standard keeps the tight
+  // 15s budget so a hung request fails fast instead of burning the whole
+  // route timeout (maxDuration) on one call.
+  const timeout = setTimeout(
+    () => controller.abort(),
+    tier === "premium" ? 50000 : 15000
+  );
 
   try {
     const res = await fetch(OPENAI_URL, {
@@ -167,6 +175,13 @@ async function requestOpenAICompletion(
       throw new LLMError("LLM response missing message content.");
     }
     return content;
+  } catch (err) {
+    // fetch abort surfaces as a DOM AbortError, not an LLMError — without
+    // this mapping the route returns a useless "Unexpected error." 502.
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new LLMError("LLM request timed out — the model took too long to respond.");
+    }
+    throw err;
   } finally {
     clearTimeout(timeout);
   }
@@ -206,7 +221,10 @@ async function callAnthropicForJSON<T>(params: {
   const { systemPrompt, userPrompt, schema, temperature = 0.9, maxTokens = 700 } = params;
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15000);
+  const timeout = setTimeout(
+    () => controller.abort(),
+    (params.tier ?? "standard") === "premium" ? 50000 : 15000
+  );
 
   try {
     const res = await fetch(ANTHROPIC_URL, {
@@ -253,6 +271,12 @@ async function callAnthropicForJSON<T>(params: {
     }
 
     return toolUseBlock.input as T;
+  } catch (err) {
+    // See the OpenAI path above: map aborts to a meaningful LLMError.
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new LLMError("LLM request timed out — the model took too long to respond.");
+    }
+    throw err;
   } finally {
     clearTimeout(timeout);
   }
