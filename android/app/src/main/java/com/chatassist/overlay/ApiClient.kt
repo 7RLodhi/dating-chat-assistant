@@ -35,6 +35,24 @@ data class FactSheet(
 object ApiClient {
     private val mainHandler = Handler(Looper.getMainLooper())
 
+    /**
+     * Reads a backend error body (usually {"error":"..."} from our API, or
+     * platform HTML on infra failures) into a short human-readable suffix.
+     * Without this every failure surfaced as a bare "HTTP 502" and backend
+     * outages were undiagnosable from the phone.
+     */
+    private fun backendError(conn: HttpURLConnection, code: Int): String {
+        val raw = runCatching {
+            (conn.errorStream ?: conn.inputStream)
+                .bufferedReader(StandardCharsets.UTF_8).use { it.readText() }
+        }.getOrDefault("").trim()
+        if (raw.isEmpty() || raw.startsWith("<")) return "HTTP $code"
+        val msg = runCatching { JSONObject(raw).optString("error").trim() }
+            .getOrDefault("").ifEmpty { raw }
+        val short = if (msg.length > 220) msg.take(220) + "…" else msg
+        return "HTTP $code: $short"
+    }
+
     fun fetchSuggestions(
         backendUrl: String,
         conversationText: String,
@@ -74,7 +92,7 @@ object ApiClient {
 
                 val code = conn.responseCode
                 if (code !in 200..299) {
-                    throw IllegalStateException("Backend returned HTTP $code")
+                    throw IllegalStateException("Backend returned ${backendError(conn, code)}")
                 }
                 val text = BufferedReader(InputStreamReader(conn.inputStream, StandardCharsets.UTF_8))
                     .use { it.readText() }
@@ -134,7 +152,7 @@ object ApiClient {
 
                 val code = conn.responseCode
                 if (code !in 200..299) {
-                    throw IllegalStateException("Backend returned HTTP $code")
+                    throw IllegalStateException("Backend returned ${backendError(conn, code)}")
                 }
                 val json = JSONObject(
                     BufferedReader(InputStreamReader(conn.inputStream, StandardCharsets.UTF_8))

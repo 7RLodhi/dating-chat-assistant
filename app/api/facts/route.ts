@@ -5,6 +5,9 @@ import { FactsRequestBody, FactsResponse } from "@/lib/types";
 
 const MAX_CHARS = 6000;
 
+// Same reasoning as /api/suggest: extraction calls are slow LLM round trips.
+export const maxDuration = 60;
+
 export async function POST(req: NextRequest) {
   let body: FactsRequestBody;
   try {

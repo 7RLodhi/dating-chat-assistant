@@ -19,8 +19,8 @@ android {
         applicationId = "com.chatassist.overlay"
         minSdk = 29
         targetSdk = 35
-        versionCode = 39
-        versionName = "0.39.0"
+        versionCode = 40
+        versionName = "0.40.0"
     }
 
     buildTypes {

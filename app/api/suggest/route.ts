@@ -28,6 +28,11 @@ const VALID_GOALS: Goal[] = ["get_a_reply", "escalate_to_date", "keep_it_light"]
 const VALID_LANGUAGES: Language[] = ["auto", "english", "hindi", "hinglish"];
 const MAX_INPUT_CHARS = 4000;
 
+// Suggestion calls routinely take 8-12s and ~2x that when a grammar-retry
+// pass runs — give the function room instead of letting the platform kill
+// slow-but-healthy requests with a bare 502.
+export const maxDuration = 60;
+
 export async function POST(req: NextRequest) {
   let body: SuggestRequestBody;
   try {
