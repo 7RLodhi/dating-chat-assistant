@@ -75,28 +75,12 @@ class OverlayService : Service() {
      * (chat ↔ feed, same package, no package event) is picked up through
      * the snapshot listener instead, using the reader's chat-input verdict.
      *
-     * Exempt (never react): our own windows (panel/trash must not trigger);
-     * keyboards — Gboard-style ("inputmethod") AND standalone ones like
-     * SwiftKey (com.touchtype.swiftkey) and Samsung (honeyboard), found via
-     * a real flight log where SwiftKey hid the bubble for whole typing
-     * sessions; and com.android.systemui, which fires constantly on some
-     * OEM skins (Nothing OS sent 6 in 4 minutes) for status-bar/gesture
-     * noise while the dating app is still frontmost. That systemui storm
-     * was the hide-and-seek. Lock screen needs no handling: the window
-     * manager keeps overlays beneath the keyguard by itself.
+     * Exempt (never react): overlay-context packages — our own windows,
+     * keyboards, systemui noise (shared definition at
+     * [ChatBus.isOverlayContext], so reader and overlay always agree).
      */
-    private fun isExemptForeground(pkg: String): Boolean {
-        if (pkg == packageName) return true
-        if (pkg == "com.android.systemui") return true
-        val lower = pkg.lowercase()
-        return lower.contains("inputmethod") ||
-            lower.contains("keyboard") ||
-            lower.contains("swiftkey") ||
-            lower.contains("touchtype") ||
-            lower.contains("honeyboard") ||
-            lower.contains("fleksy") ||
-            lower.contains("swype")
-    }
+    private fun isExemptForeground(pkg: String): Boolean =
+        ChatBus.isOverlayContext(pkg, packageName)
 
     private val foregroundListener: (String) -> Unit = { pkg ->
         mainHandler.post {
@@ -180,6 +164,7 @@ class OverlayService : Service() {
         // never floats over our own UI (the foreground listener ignores our
         // package on purpose — panel/trash windows must not trigger it).
         if (intent?.action == ACTION_HIDE_BUBBLE) {
+            ChatBus.inConversation = false
             mainHandler.post {
                 if (panel == null) {
                     bubble?.visibility = View.GONE
@@ -188,6 +173,9 @@ class OverlayService : Service() {
             }
             return START_STICKY
         }
+        // Fresh start: never trust a stale verdict from a previous life in
+        // this process — the capture below re-derives it immediately.
+        ChatBus.inConversation = false
         startForeground(NOTIF_ID, buildNotification())
         if (bubble == null) showBubble()
         // A static screen fires no events: capture once so the bubble
@@ -216,6 +204,11 @@ class OverlayService : Service() {
     @SuppressLint("ClickableViewAccessibility")
     private fun showBubble() {
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+        // Defensive: if a previous window leaked (killed-then-restarted
+        // service, system-side removal), take it down before adding ours —
+        // otherwise a dead, untappable ghost floats next to the live bubble.
+        bubble?.let { runCatching { windowManager.removeView(it) } }
+        bubble = null
         val inflater = LayoutInflater.from(this)
         bubble = inflater.inflate(R.layout.overlay_bubble, null)
 

@@ -2,14 +2,12 @@ package com.chatassist.overlay
 
 import android.Manifest
 import android.app.ActivityManager
-import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
-import android.text.TextUtils
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.RadioButton
@@ -35,6 +33,8 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var statusOverlay: TextView
     private lateinit var statusA11y: TextView
+    private lateinit var statusCapture: TextView
+    private lateinit var a11yHint: TextView
     private lateinit var statusBattery: TextView
     private lateinit var testResult: TextView
     private lateinit var btnStart: Button
@@ -95,6 +95,8 @@ class MainActivity : AppCompatActivity() {
 
         statusOverlay = findViewById(R.id.statusOverlay)
         statusA11y = findViewById(R.id.statusA11y)
+        statusCapture = findViewById(R.id.statusCapture)
+        a11yHint = findViewById(R.id.a11yHint)
         statusBattery = findViewById(R.id.statusBattery)
         testResult = findViewById(R.id.testResult)
         btnStart = findViewById(R.id.btnStart)
@@ -373,6 +375,17 @@ class MainActivity : AppCompatActivity() {
         statusOverlay.text = "1. Display over other apps: ${if (overlayOk) "granted ✓" else "not granted"}"
         val a11yOk = isAccessibilityEnabled()
         statusA11y.text = "2. Accessibility service: ${if (a11yOk) "enabled ✓" else "not enabled"}"
+        a11yHint.visibility = if (a11yOk) android.view.View.GONE else android.view.View.VISIBLE
+        // Proof of life independent of the toggle above: if captures flow,
+        // the reader is alive no matter what any status string claims.
+        val last = ChatBus.all().firstOrNull()
+        statusCapture.text = if (last == null) {
+            "Last capture: none yet — open a chat in a supported app."
+        } else {
+            val whenText = java.text.SimpleDateFormat("HH:mm, dd MMM", java.util.Locale.getDefault())
+                .format(java.util.Date(last.second.at))
+            "Last capture: $whenText • ${ChatBus.labelFor(last.first, last.second)}"
+        }
         val pm = getSystemService(POWER_SERVICE) as android.os.PowerManager
         val exempt = pm.isIgnoringBatteryOptimizations(packageName)
         statusBattery.text =
@@ -382,9 +395,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun isAccessibilityEnabled(): Boolean {
-        val expected = ComponentName(this, ChatReaderService::class.java).flattenToString()
+        // Package-prefix match instead of the exact flattened component:
+        // survives short-form entries, renames, and OEM string quirks in
+        // the secure setting that made the strict check report "not
+        // enabled" on devices where the service was actually running.
         val enabled = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
-        return enabled?.split(":")?.any { TextUtils.equals(it, expected) } == true
+        return enabled?.split(":")?.any { it.startsWith("$packageName/") } == true
     }
 
     private fun requestNotificationPermissionIfNeeded() {

@@ -172,7 +172,20 @@ class ChatReaderService : AccessibilityService() {
                 runCatching { findSupportedAppRoot() != null }.getOrDefault(false)
             ChatBus.notifyForeground(pkg)
         }
-        if (pkg !in ChatBus.SUPPORTED_PACKAGES) return
+        // Leaving all supported apps clears the conversation verdict: it is
+        // re-derived on every capture inside, but nothing recomputes it
+        // outside — without this it sticks true forever and every later
+        // visibility sync wrongly resurrects the bubble (own app, home,
+        // other apps). Overlay-context windows (our own UI, keyboards,
+        // systemui) sit ON TOP of the chat rather than replacing it, so
+        // they must not clear. Hash/debounce skips intentionally keep the
+        // old value (unchanged screen ⇒ unchanged verdict).
+        if (pkg !in ChatBus.SUPPORTED_PACKAGES) {
+            if (!ChatBus.isOverlayContext(pkg, packageName)) {
+                ChatBus.inConversation = false
+            }
+            return
+        }
         if (event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED &&
             event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
         ) return

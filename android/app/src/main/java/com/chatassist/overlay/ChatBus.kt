@@ -65,6 +65,22 @@ object ChatBus {
     var supportedVisible: Boolean = false
 
     /**
+     * Packages that overlay the chat context instead of replacing it: our
+     * own windows, keyboards, and systemui noise. Neither the reader's
+     * conversation verdict nor the overlay's visibility may react to these
+     * (single shared definition — both sides must agree).
+     */
+    fun isOverlayContext(pkg: String, ownPackage: String): Boolean {
+        if (pkg == ownPackage) return true
+        if (pkg == "com.android.systemui") return true
+        val lower = pkg.lowercase()
+        return listOf(
+            "inputmethod", "keyboard", "swiftkey", "touchtype",
+            "honeyboard", "fleksy", "swype",
+        ).any { it in lower }
+    }
+
+    /**
      * Whether the current window is an actual chat conversation (chat input
      * on screen, not a list/feed/status screen). The bubble — and therefore
      * the panel — exists ONLY here. Updated by the reader on every capture

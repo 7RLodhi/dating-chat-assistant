@@ -97,6 +97,25 @@
             android:text="Enable screen reading" />
 
         <TextView
+            android:id="@+id/statusCapture"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="Last capture: —"
+            android:textColor="#6B7280"
+            android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/a11yHint"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="Still shows off after enabling? Android 13+ blocks sideloaded apps under “Restricted settings”: open this app's App info → ⋮ menu → Allow restricted settings, then enable again."
+            android:textColor="#6B7280"
+            android:textSize="13sp"
+            android:visibility="gone" />
+
+        <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
