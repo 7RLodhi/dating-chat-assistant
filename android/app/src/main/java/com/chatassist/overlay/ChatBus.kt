@@ -65,6 +65,16 @@ object ChatBus {
     var supportedVisible: Boolean = false
 
     /**
+     * Whether the current window is an actual chat conversation (chat input
+     * on screen, not a list/feed/status screen). The bubble — and therefore
+     * the panel — exists ONLY here. Updated by the reader on every capture
+     * attempt; kept across hash-skips (no text change means no screen
+     * change).
+     */
+    @Volatile
+    var inConversation: Boolean = false
+
+    /**
      * Package of the current foreground window, updated on every window
      * state change — including unsupported apps and the launcher. Only the
      * package name is observed here, never any content.

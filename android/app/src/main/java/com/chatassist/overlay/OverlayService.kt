@@ -69,9 +69,11 @@ class OverlayService : Service() {
     private val mainHandler = Handler(Looper.getMainLooper())
 
     /**
-     * The bubble (and panel) exist only inside supported apps. Window events
-     * from anything else leave everything untouched EXCEPT real app switches
-     * (home, another app), which hide.
+     * The bubble (and panel) exist only on conversation screens — not app
+     * homepages, lists, or feeds. Package switches between apps still drive
+     * show/hide through the visibility sync below; in-app navigation
+     * (chat ↔ feed, same package, no package event) is picked up through
+     * the snapshot listener instead, using the reader's chat-input verdict.
      *
      * Exempt (never react): our own windows (panel/trash must not trigger);
      * keyboards — Gboard-style ("inputmethod") AND standalone ones like
@@ -136,7 +138,20 @@ class OverlayService : Service() {
 
     private val snapshotListener: (String) -> Unit = {
         mainHandler.post {
-            if (panel == null) return@post
+            if (panel == null) {
+                // No panel to refresh — but the conversation verdict may
+                // have changed (chat → feed inside the same app fires no
+                // package event), so re-sync the bubble here.
+                syncBubbleVisibility("snapshot")
+                return@post
+            }
+            if (!ChatBus.inConversation) {
+                // Left the conversation with the panel open (same-app
+                // navigation): collapse exactly like leaving the app.
+                togglePanel()
+                syncBubbleVisibility("left-chat")
+                return@post
+            }
             val key = ChatBus.latestKey
             refreshChatSection()
             if (key == renderedKey) return@post
@@ -148,16 +163,16 @@ class OverlayService : Service() {
         }
     }
 
-    /** Visible if and only if a supported app is in front (and panel closed). */
+    /** The bubble lives only on conversation screens (panel closed). */
     private fun syncBubbleVisibility(cause: String) {
         if (panel != null) {
             bubble?.visibility = View.GONE
             ChatBus.noteBubbleVisibility(false, "$cause + panel open")
             return
         }
-        val visible = ChatBus.foregroundPackage in ChatBus.SUPPORTED_PACKAGES
+        val visible = ChatBus.inConversation
         bubble?.visibility = if (visible) View.VISIBLE else View.GONE
-        ChatBus.noteBubbleVisibility(visible, "$cause fg=${ChatBus.foregroundPackage}")
+        ChatBus.noteBubbleVisibility(visible, "$cause inConversation=${ChatBus.inConversation}")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -175,6 +190,9 @@ class OverlayService : Service() {
         }
         startForeground(NOTIF_ID, buildNotification())
         if (bubble == null) showBubble()
+        // A static screen fires no events: capture once so the bubble
+        // appears immediately when the service starts inside a chat.
+        ChatBus.requestCapture()
         return START_STICKY
     }
 
@@ -485,12 +503,9 @@ class OverlayService : Service() {
         if (panel != null) {
             windowManager.removeView(panel)
             panel = null
-            // Panel-open guarantees a supported context (leaving auto-fires
-            // collapse first), so show directly — trusting the possibly stale
-            // foreground reading here is what wedged the bubble hidden. The
-            // foreground listener re-syncs right after when collapsing.
-            bubble?.visibility = View.VISIBLE
-            ChatBus.noteBubbleVisibility(true, "panel closed")
+            // Re-sync (not blind show): the panel may have been closed over
+            // a non-conversation screen, where the bubble must stay hidden.
+            syncBubbleVisibility("panel closed")
             return
         }
         val inflater = LayoutInflater.from(this)

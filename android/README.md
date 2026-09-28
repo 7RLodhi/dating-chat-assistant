@@ -136,12 +136,12 @@ app to go back to tap-to-copy. Safeguards, all deliberate:
 
 ## Behavior notes
 
-- **Bubble auto-visibility:** the bubble shows only while a supported app is
-  in front — nowhere else, not even over this app's own screens. Open Tinder
-  and it appears; go home and it's gone. No manual toggling. It also hides
-  while its own panel is open so it never covers panel content. Hides are
-  verified against actually-visible windows 500ms later, so transient
-  toasts/usage-reminders can't take the bubble down.
+- **Bubble auto-visibility:** the bubble shows only on conversation screens
+  inside supported apps — never on homepages, lists, feeds, or this app's
+  own screens. Open a chat and it appears; leave the chat and it's gone. No
+  manual toggling. It also hides while its own panel is open so it never
+  covers panel content. Hides are verified against actually-visible windows
+  500ms later, so transient toasts/usage-reminders can't take the bubble down.
 - **Explicit start/stop:** the service runs only after you tap Start, and
   stays dead after drop-to-close — opening a dating app never restarts it on
   its own, so nothing runs (or drains) behind your back.

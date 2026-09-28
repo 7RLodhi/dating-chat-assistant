@@ -232,7 +232,10 @@ class ChatReaderService : AccessibilityService() {
             // Only real conversation screens: a chat input must be on screen
             // (kills chat-lists, Status/Calls tabs, feeds, contact info…),
             // and list-screen markers are double-checked after parsing.
-            if (!parser.hasChatInput(root)) {
+            // The verdict also drives bubble visibility (conversation-only).
+            val conversation = parser.hasChatInput(root)
+            ChatBus.inConversation = conversation
+            if (!conversation) {
                 ChatBus.noteCaptureSkip("no-input")
                 return false
             }
@@ -255,6 +258,7 @@ class ChatReaderService : AccessibilityService() {
                 return false
             }
             if (parser.isListScreen(title, text)) {
+                ChatBus.inConversation = false
                 ChatBus.noteCaptureSkip("list-screen")
                 return false
             }
