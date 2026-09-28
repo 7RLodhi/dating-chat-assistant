@@ -251,29 +251,35 @@ export async function addNamePun(name: string, pun: string): Promise<NamePun> {
 export async function voteNamePun(id: string, vote: PunVote): Promise<NamePun | null> {
   if (isSupabaseConfigured()) {
     const supabase = getSupabase()!;
-    const { data, error: readError } = await supabase
-      .from("name_puns")
-      .select("id, name, pun, worked, not_worked, created_at")
-      .eq("id", id)
+    // Atomic increment via RPC (see supabase/schema.sql
+    // increment_pun_vote): one round trip, no read-then-write race. The
+    // previous select-then-update pattern could lose votes under
+    // concurrent traffic (two readers see the same starting count).
+    const { data, error } = await supabase
+      .rpc("increment_pun_vote", { pun_id: id, worked_vote: vote === "worked" })
       .single();
-    if (readError || !data) return null;
-    const column = vote === "worked" ? "worked" : "not_worked";
-    const { error: updateError } = await supabase
-      .from("name_puns")
-      .update({ [column]: Number(data[column] ?? 0) + 1 })
-      .eq("id", id);
-    if (updateError) {
+    if (error) {
+      // PGRST116 = "no rows returned" from .single() — the RPC's `returning`
+      // clause found no matching id, i.e. genuinely not found. Any other
+      // error is a real failure and must surface as one (502), not silently
+      // look identical to a 404 to the caller.
+      if (error.code === "PGRST116") return null;
       // eslint-disable-next-line no-console
-      console.error("Supabase update (name_puns vote) failed:", updateError.message);
+      console.error("Supabase RPC (increment_pun_vote) failed:", error.message);
       throw new Error("Failed to record your vote. Try again in a moment.");
     }
+    if (!data) return null;
+    const row = data as {
+      id: string; name: string; pun: string;
+      worked: number; not_worked: number; created_at: string;
+    };
     return {
-      id: String(data.id),
-      name: String(data.name),
-      pun: String(data.pun),
-      worked: Number(data.worked ?? 0) + (vote === "worked" ? 1 : 0),
-      notWorked: Number(data.not_worked ?? 0) + (vote === "notWorked" ? 1 : 0),
-      createdAt: String(data.created_at),
+      id: String(row.id),
+      name: String(row.name),
+      pun: String(row.pun),
+      worked: Number(row.worked ?? 0),
+      notWorked: Number(row.not_worked ?? 0),
+      createdAt: String(row.created_at),
     };
   }
 

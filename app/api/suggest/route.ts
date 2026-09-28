@@ -133,6 +133,15 @@ export async function POST(req: NextRequest) {
       : buildOpenerUserPrompt({ profileText: textField, tone, goal, styleExamples, language, namePunHint, tasteProfile, userGender });
 
   try {
+    // Timing instrumentation for M-3: healthy requests take 8-12s, but the
+    // grammar-retry pass below can double that — averaging the two hides a
+    // real P95 cliff. Logging the retry flag alongside duration lets you
+    // filter "retried=true" requests out of a P50 view, and isolate them for
+    // a P95/P99 view, without changing the retry behavior itself (it's a
+    // deliberate correctness trade-off, not a bug).
+    const requestStartedAt = Date.now();
+    let retried = false;
+
     const schema = mode === "reply" ? REPLY_JSON_SCHEMA : OPENER_JSON_SCHEMA;
     let result = await callLLMForJSON<SuggestResponse>({
       systemPrompt: SYSTEM_PROMPT,
@@ -158,6 +167,7 @@ export async function POST(req: NextRequest) {
         );
       let kept = keep(result);
       if (kept.length < 3) {
+        retried = true;
         try {
           const retry = await callLLMForJSON<SuggestResponse>({
             systemPrompt: SYSTEM_PROMPT,
@@ -215,6 +225,14 @@ export async function POST(req: NextRequest) {
     }
 
     const id = randomUUID();
+
+    // Structured, greppable timing log — see the comment above for why
+    // `retried` matters more than a bare average here.
+    const durationMs = Date.now() - requestStartedAt;
+    // eslint-disable-next-line no-console
+    console.log(
+      `[suggest.timing] mode=${mode} language=${language} retried=${retried} durationMs=${durationMs}`
+    );
 
     // Best-effort logging — never fail the user-facing request over it.
     // This is what makes the 👍/👎 feedback loop analyzable later (joins

@@ -178,19 +178,23 @@ export async function getStats(): Promise<StatsResponse> {
     if (g.id) genById.set(g.id, g);
   }
   // Resolve an outcome to the suggestion's tone/approach: generation link
-  // first, then a text search across generations as fallback.
+  // first, then an O(1) text-index lookup as fallback (built once below —
+  // NEVER re-scan `gens` per outcome, that made this O(outcomes ×
+  // generations × suggestions), ~20M comparisons worst case at ROW_LIMIT).
+  const suggestionIndex = new Map<string, { tone: string; approach: string }>();
+  for (const g of gens) {
+    for (const s of g.suggestions) {
+      if (!suggestionIndex.has(s.text)) suggestionIndex.set(s.text, s); // first writer wins
+    }
+  }
   function resolveSuggestion(out: OutRow): { tone: string; approach: string } | null {
-    const inGen = (g: GenRow) =>
-      g.suggestions.find((s) => s.text === out.suggestionText);
     if (out.generationId) {
-      const hit = inGen((genById.get(out.generationId) ?? { at: "", suggestions: [] }) as GenRow);
+      const hit = genById.get(out.generationId)?.suggestions.find(
+        (s) => s.text === out.suggestionText
+      );
       if (hit) return hit;
     }
-    for (const g of gens) {
-      const hit = inGen(g);
-      if (hit) return hit;
-    }
-    return null;
+    return suggestionIndex.get(out.suggestionText) ?? null;
   }
 
   const votesUp = fbs.filter((f) => f.vote === "up").length;

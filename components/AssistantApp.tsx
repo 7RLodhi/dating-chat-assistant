@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import ToneSelector from "./ToneSelector";
 import GoalSelector from "./GoalSelector";
 import LanguageSelector from "./LanguageSelector";
@@ -15,11 +16,15 @@ import NewMatchModal from "./NewMatchModal";
 import BioModal from "./BioModal";
 import EditMatchModal from "./EditMatchModal";
 import MatchFactsModal from "./MatchFactsModal";
-import NamePunDirectory from "./NamePunDirectory";
+// Dynamically imported: all four are opt-in (side menu / collapsed
+// section), rendered conditionally, and never needed for the core
+// generate-a-reply flow every session uses. Splitting them out of the main
+// chunk keeps the first-load bundle to just the code most visits touch.
+const NamePunDirectory = dynamic(() => import("./NamePunDirectory"), { ssr: false });
 import SideMenu, { SideMenuItem } from "./SideMenu";
-import DoubleMeaningSheet from "./DoubleMeaningSheet";
-import DarkFantasySheet from "./DarkFantasySheet";
-import DashboardSheet from "./DashboardSheet";
+const DoubleMeaningSheet = dynamic(() => import("./DoubleMeaningSheet"), { ssr: false });
+const DarkFantasySheet = dynamic(() => import("./DarkFantasySheet"), { ssr: false });
+const DashboardSheet = dynamic(() => import("./DashboardSheet"), { ssr: false });
 import { trackEvent } from "@/lib/analytics";
 import OutcomeNudge from "./OutcomeNudge";
 import TasteHint from "./TasteHint";
@@ -55,8 +60,14 @@ import { APP_VERSION } from "@/lib/version";
 import { FactsResponse, Goal, Language, MatchFacts, Mode, PendingOutcome, SuggestResponse, Tone, UserGender } from "@/lib/types";
 
 export default function AssistantApp() {
-  const [matches, setMatches] = useState<Match[]>([]);
-  const [activeMatchId, setActiveMatchId] = useState<string | null>(null);
+  // Lazy-initialized from localStorage — safe because page.tsx renders this
+  // component client-only (ssr: false), so there is no server-rendered HTML
+  // for these values to mismatch against. Without that, computing real data
+  // here (instead of in a post-mount useEffect) would produce a visible
+  // hydration mismatch, since these all render into the DOM immediately.
+  const [matches, setMatches] = useState<Match[]>(() => getMatches());
+  const mostRecentMatch = matches.length > 0 ? matches[matches.length - 1] : null;
+  const [activeMatchId, setActiveMatchId] = useState<string | null>(() => mostRecentMatch?.id ?? null);
   const [showNewMatchModal, setShowNewMatchModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showBioModal, setShowBioModal] = useState(false);
@@ -68,11 +79,13 @@ export default function AssistantApp() {
   const [dueOutcomes, setDueOutcomes] = useState<PendingOutcome[]>([]);
   const [tasteVersion, setTasteVersion] = useState(0);
 
-  const [bio, setBio] = useState("");
-  const [conversationRows, setConversationRows] = useState<ConversationRow[]>([]);
+  const [bio, setBio] = useState(() => mostRecentMatch?.bio ?? "");
+  const [conversationRows, setConversationRows] = useState<ConversationRow[]>(() =>
+    mostRecentMatch ? parseConversationText(mostRecentMatch.conversationText) : []
+  );
   const conversationText = serializeRows(conversationRows);
   const [extraContext, setExtraContext] = useState("");
-  const [tone, setTone] = useState<Tone | null>(null);
+  const [tone, setTone] = useState<Tone | null>(() => mostRecentMatch?.tone ?? null);
   const [goal, setGoal] = useState<Goal>("get_a_reply");
   const [language, setLanguage] = useState<Language>("auto");
   const [userGender, setUserGender] = useState<UserGender>(() => {
@@ -87,7 +100,7 @@ export default function AssistantApp() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<SuggestResponse | null>(null);
 
-  const [usageToday, setUsageToday] = useState(0);
+  const [usageToday, setUsageToday] = useState(() => getUsageToday());
   const [showPaywall, setShowPaywall] = useState(false);
   const [showSideMenu, setShowSideMenu] = useState(false);
   const [openDeck, setOpenDeck] = useState<SideMenuItem | null>(null);
@@ -104,18 +117,14 @@ export default function AssistantApp() {
   const effectiveMode: Mode = hasMatchContent ? "reply" : "opener";
 
   useEffect(() => {
-    setUsageToday(getUsageToday());
-    const loaded = getMatches();
-    setMatches(loaded);
-    if (loaded.length > 0) {
-      const mostRecent = loaded[loaded.length - 1];
-      setActiveMatchId(mostRecent.id);
-      setBio(mostRecent.bio);
-      const loadedRows = parseConversationText(mostRecent.conversationText);
-      setConversationRows(loadedRows);
-      setTone(mostRecent.tone ?? null);
-      evaluateOutcomes(mostRecent.id, loadedRows.length);
+    // matches/bio/conversationRows/tone/usageToday are now set from
+    // localStorage synchronously via lazy useState initializers above (see
+    // page.tsx for why that's hydration-safe here) — this effect only needs
+    // to evaluate the outcome nudge for whatever match loaded initially.
+    if (mostRecentMatch) {
+      evaluateOutcomes(mostRecentMatch.id, conversationRows.length);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function evaluateOutcomes(matchId: string | null, rowCount: number) {

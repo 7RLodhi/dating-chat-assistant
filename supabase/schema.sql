@@ -97,6 +97,47 @@ create index if not exists idx_generations_tone_goal on generations (tone, goal)
 create index if not exists idx_generations_created_at on generations (created_at);
 create index if not exists idx_name_puns_name on name_puns (name);
 create index if not exists idx_name_puns_worked on name_puns (worked desc);
+-- Added: the dashboard's "per match" feature groups exclusively by
+-- match_name, and resolveSuggestion() joins outcomes back to generations —
+-- neither had a supporting index before, meaning a full table scan (or
+-- full sort, for created_at) on every /api/stats hit.
+create index if not exists idx_outcomes_match_name on outcomes (match_name);
+create index if not exists idx_outcomes_generation_id on outcomes (generation_id);
+create index if not exists idx_outcomes_created_at on outcomes (created_at);
+create index if not exists idx_feedback_created_at on feedback (created_at);
+
+-- Atomic vote increment for name_puns. Replaces a client-side
+-- select-then-update (lib/store.ts voteNamePun): that pattern is two round
+-- trips AND a lost-update race — two concurrent votes on the same pun can
+-- both read worked=5, both write worked=6, silently dropping one vote.
+-- This function does the increment and read-back in one statement.
+create or replace function increment_pun_vote(pun_id uuid, worked_vote boolean)
+returns table (
+  id uuid,
+  name text,
+  pun text,
+  worked integer,
+  not_worked integer,
+  created_at timestamptz
+)
+language plpgsql
+as $$
+begin
+  if worked_vote then
+    return query
+      update name_puns set worked = name_puns.worked + 1
+      where name_puns.id = pun_id
+      returning name_puns.id, name_puns.name, name_puns.pun,
+                name_puns.worked, name_puns.not_worked, name_puns.created_at;
+  else
+    return query
+      update name_puns set not_worked = name_puns.not_worked + 1
+      where name_puns.id = pun_id
+      returning name_puns.id, name_puns.name, name_puns.pun,
+                name_puns.worked, name_puns.not_worked, name_puns.created_at;
+  end if;
+end;
+$$;
 
 -- Convenience view: joins each feedback vote back to the tone/goal/mood
 -- that produced it, so "which tone+goal combos get thumbs up" is a simple
