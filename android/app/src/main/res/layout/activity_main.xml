@@ -245,7 +245,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:text="Start enables when the bubble isn't running, or after you change appearance above."
+            android:text="Start (re)starts the bubble. It appears only on chat screens — open Snapchat or WhatsApp after starting."
             android:textColor="#6B7280"
             android:textSize="13sp" />
 

@@ -1,7 +1,6 @@
 package com.chatassist.overlay
 
 import android.Manifest
-import android.app.ActivityManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -65,26 +64,13 @@ class MainActivity : AppCompatActivity() {
         Prefs.setCustomIconUri(this, uri.toString())
         Prefs.setIconStyle(this, "custom")
         iconGroup.check(R.id.radioCustom)
-        markAppearanceDirty()
     }
 
-    /** Start is enabled when the bubble isn't running, or after an appearance edit. */
-    private var appearanceDirty = false
-
-    private fun markAppearanceDirty() {
-        appearanceDirty = true
-        updateStartButton()
-    }
-
-    private fun isOverlayRunning(): Boolean {
-        val manager = getSystemService(ACTIVITY_SERVICE) as ActivityManager
-        return manager.getRunningServices(Int.MAX_VALUE)
-            .any { it.service.className == OverlayService::class.java.name }
-    }
-
+    /** Start is always tappable: it (re)starts the service, which re-syncs
+     * bubble visibility and captures the current screen immediately. */
     private fun updateStartButton() {
         if (::btnStart.isInitialized) {
-            btnStart.isEnabled = !isOverlayRunning() || appearanceDirty
+            btnStart.isEnabled = true
         }
     }
 
@@ -153,7 +139,6 @@ class MainActivity : AppCompatActivity() {
             }
             if (Prefs.iconStyle(this) != next) {
                 Prefs.setIconStyle(this, next)
-                markAppearanceDirty()
             }
         }
         sizeSeek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
@@ -161,7 +146,6 @@ class MainActivity : AppCompatActivity() {
                 if (!fromUser) return
                 Prefs.setBubbleSizeDp(this@MainActivity, progress)
                 sizeValue.text = "${Prefs.bubbleSizeDp(this@MainActivity)} dp"
-                markAppearanceDirty()
             }
             override fun onStartTrackingTouch(seek: SeekBar) {}
             override fun onStopTrackingTouch(seek: SeekBar) {}
@@ -171,7 +155,6 @@ class MainActivity : AppCompatActivity() {
                 if (!fromUser) return
                 Prefs.setTransparencyPct(this@MainActivity, progress)
                 alphaValue.text = "${Prefs.transparencyPct(this@MainActivity)}%"
-                markAppearanceDirty()
             }
             override fun onStartTrackingTouch(seek: SeekBar) {}
             override fun onStopTrackingTouch(seek: SeekBar) {}
@@ -181,7 +164,6 @@ class MainActivity : AppCompatActivity() {
                 if (!fromUser) return
                 Prefs.setPanelAlphaPct(this@MainActivity, progress)
                 panelAlphaValue.text = "${Prefs.panelAlphaPct(this@MainActivity)}%"
-                markAppearanceDirty()
             }
             override fun onStartTrackingTouch(seek: SeekBar) {}
             override fun onStopTrackingTouch(seek: SeekBar) {}
@@ -212,8 +194,14 @@ class MainActivity : AppCompatActivity() {
             // always take effect on the running bubble.
             stopService(Intent(this, OverlayService::class.java))
             startForegroundServiceCompat()
-            appearanceDirty = false
             updateStartButton()
+            // The bubble lives only on chat screens, never here — say so,
+            // or Start looks dead when it actually worked.
+            android.widget.Toast.makeText(
+                this,
+                "Bubble running — open a chat in Snapchat/WhatsApp to see it",
+                android.widget.Toast.LENGTH_LONG,
+            ).show()
         }
         findViewById<Button>(R.id.btnTest).setOnClickListener {
             testResult.text = "Sending…"
