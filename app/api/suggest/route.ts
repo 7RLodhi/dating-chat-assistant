@@ -143,10 +143,15 @@ export async function POST(req: NextRequest) {
     let retried = false;
 
     const schema = mode === "reply" ? REPLY_JSON_SCHEMA : OPENER_JSON_SCHEMA;
+    // Spicy is where writing quality IS the product (slow-burn tension,
+    // charged teasing) — it gets the premium tier; everything else stays on
+    // the cheap default. The grammar retry below inherits the same tier.
+    const tier = tone === "spicy" ? "premium" : "standard";
     let result = await callLLMForJSON<SuggestResponse>({
       systemPrompt: SYSTEM_PROMPT,
       userPrompt,
       schema,
+      tier,
     });
 
     // Hard guards for Hindi/Hinglish grammar (a prompt rule alone still
@@ -177,6 +182,7 @@ export async function POST(req: NextRequest) {
               buildVerbCorrection() +
               (userGender ? buildGenderCorrection(userGender) : ""),
             schema,
+            tier,
           });
           const retryKept = keep(retry);
           if (retryKept.length > kept.length) {
@@ -231,7 +237,7 @@ export async function POST(req: NextRequest) {
     const durationMs = Date.now() - requestStartedAt;
     // eslint-disable-next-line no-console
     console.log(
-      `[suggest.timing] mode=${mode} language=${language} retried=${retried} durationMs=${durationMs}`
+      `[suggest.timing] mode=${mode} language=${language} tier=${tier} retried=${retried} durationMs=${durationMs}`
     );
 
     // Best-effort logging — never fail the user-facing request over it.
@@ -246,7 +252,7 @@ export async function POST(req: NextRequest) {
       extraContext,
       conversationRead: result.conversation_read,
       suggestions: result.suggestions,
-      model: describeModel(),
+      model: describeModel(tier),
       styleApplied: Boolean(styleExamples?.trim()),
       viaScreenshot: Boolean(viaScreenshot),
       language,

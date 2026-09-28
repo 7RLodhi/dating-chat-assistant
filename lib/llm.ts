@@ -7,6 +7,30 @@ export class LLMError extends Error {
 
 type Provider = "openai" | "anthropic";
 
+/**
+ * Model tier: "standard" is the cheap default (Haiku / gpt-4o-mini) used
+ * for everything; "premium" (Sonnet / gpt-4o) is reserved for calls where
+ * writing quality IS the product — spicy suggestions and fantasy scenarios.
+ * Callers opt in per call (see suggest/fantasy routes); nothing defaults
+ * to premium, so costs only rise on those two paths.
+ */
+export type ModelTier = "standard" | "premium";
+
+function resolveModel(provider: Provider, tier: ModelTier): string {
+  if (provider === "anthropic") {
+    // Premium default is the dated Sonnet ID verified present on this key
+    // via GET /v1/models (bare "claude-sonnet-4-5" alias not listed there —
+    // Haiku's bare alias resolves, but pinning the exact ID removes all
+    // doubt for the tier you're paying extra for). Override freely.
+    return tier === "premium"
+      ? process.env.ANTHROPIC_PREMIUM_MODEL || "claude-sonnet-4-5-20250929"
+      : process.env.ANTHROPIC_MODEL || "claude-haiku-4-5";
+  }
+  return tier === "premium"
+    ? process.env.OPENAI_PREMIUM_MODEL || "gpt-4o"
+    : process.env.OPENAI_MODEL || "gpt-4o-mini";
+}
+
 function resolveProvider(): Provider {
   const explicit = process.env.LLM_PROVIDER?.toLowerCase();
   if (explicit === "openai" || explicit === "anthropic") return explicit;
@@ -19,13 +43,9 @@ function resolveProvider(): Provider {
 }
 
 /** Returns "provider/model" for the currently configured provider — used for logging, not for the API call itself. */
-export function describeModel(): string {
+export function describeModel(tier: ModelTier = "standard"): string {
   const provider = resolveProvider();
-  const model =
-    provider === "anthropic"
-      ? process.env.ANTHROPIC_MODEL || "claude-haiku-4-5"
-      : process.env.OPENAI_MODEL || "gpt-4o-mini";
-  return `${provider}/${model}`;
+  return `${provider}/${resolveModel(provider, tier)}`;
 }
 
 /**
@@ -41,6 +61,7 @@ export async function callLLMForJSON<T>(params: {
   schema: Record<string, unknown>;
   temperature?: number;
   maxTokens?: number;
+  tier?: ModelTier;
 }): Promise<T> {
   const provider = resolveProvider();
   return provider === "anthropic"
@@ -64,6 +85,7 @@ async function callOpenAIForJSON<T>(params: {
   userPrompt: string;
   temperature?: number;
   maxTokens?: number;
+  tier?: ModelTier;
 }): Promise<T> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
@@ -72,7 +94,7 @@ async function callOpenAIForJSON<T>(params: {
     );
   }
 
-  const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
+  const model = resolveModel("openai", params.tier ?? "standard");
   const { systemPrompt, userPrompt, temperature = 0.9, maxTokens = 700 } = params;
 
   const messages = [
@@ -164,6 +186,7 @@ async function callAnthropicForJSON<T>(params: {
   schema: Record<string, unknown>;
   temperature?: number;
   maxTokens?: number;
+  tier?: ModelTier;
 }): Promise<T> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
@@ -176,9 +199,10 @@ async function callAnthropicForJSON<T>(params: {
   // release within that model family, so this keeps working as versions
   // ship/retire without code changes. Check platform.claude.com/docs for the
   // current lineup if this ever 404s — Anthropic retires older model IDs on
-  // a rolling basis. Override with a dated model ID via ANTHROPIC_MODEL if
-  // you want a pinned, reproducible version instead.
-  const model = process.env.ANTHROPIC_MODEL || "claude-haiku-4-5";
+  // a rolling basis. Override with a dated model ID via ANTHROPIC_MODEL (or
+  // ANTHROPIC_PREMIUM_MODEL for the premium tier) if you want a pinned,
+  // reproducible version instead.
+  const model = resolveModel("anthropic", params.tier ?? "standard");
   const { systemPrompt, userPrompt, schema, temperature = 0.9, maxTokens = 700 } = params;
 
   const controller = new AbortController();

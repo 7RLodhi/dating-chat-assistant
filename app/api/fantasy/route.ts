@@ -30,12 +30,15 @@ export async function POST(req: NextRequest) {
     : [];
 
   try {
+    // Fantasy is pure writing quality (slow-burn "would you?" scenarios),
+    // so it always runs on the premium tier — see lib/llm.ts ModelTier.
     const result = await callLLMForJSON<FantasyResponse>({
       systemPrompt: FANTASY_SYSTEM_PROMPT,
       userPrompt: buildFantasyPrompt({ language, count, avoid }),
       schema: FANTASY_JSON_SCHEMA,
       temperature: 0.9,
       maxTokens: 500,
+      tier: "premium",
     });
 
     if (!Array.isArray(result.items)) {
@@ -75,6 +78,7 @@ export async function POST(req: NextRequest) {
           schema: FANTASY_JSON_SCHEMA,
           temperature: 0.9,
           maxTokens: 500,
+          tier: "premium",
         });
         const retryItems = Array.isArray(retry.items) ? clean(retry.items) : [];
         if (retryItems.length > items.length) items = retryItems;
