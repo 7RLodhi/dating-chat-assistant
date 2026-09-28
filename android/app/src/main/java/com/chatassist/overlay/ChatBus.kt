@@ -54,6 +54,17 @@ object ChatBus {
     )
 
     /**
+     * Whether any supported dating-app window is currently on screen.
+     * Updated by the reader on every window-state change — this is the
+     * ground truth the overlay verifies against before hiding anything.
+     * (Transient windows like usage-reminder toasts fire with foreign
+     * packages while the dating app sits underneath; the event package
+     * alone would wrongly hide the bubble.)
+     */
+    @Volatile
+    var supportedVisible: Boolean = false
+
+    /**
      * Package of the current foreground window, updated on every window
      * state change — including unsupported apps and the launcher. Only the
      * package name is observed here, never any content.

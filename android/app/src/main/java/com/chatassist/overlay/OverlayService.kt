@@ -99,10 +99,20 @@ class OverlayService : Service() {
     private val foregroundListener: (String) -> Unit = { pkg ->
         mainHandler.post {
             if (isExemptForeground(pkg)) return@post
-            if (pkg !in ChatBus.SUPPORTED_PACKAGES) {
-                if (panel != null) togglePanel()
+            if (pkg in ChatBus.SUPPORTED_PACKAGES) {
+                syncBubbleVisibility("fg-event")
+                return@post
             }
-            syncBubbleVisibility("fg-event")
+            // Unsupported package — but it may be transient (usage-reminder
+            // toast, permission sheet) with the dating app still underneath.
+            // Verify 500ms later against actual windows, not the event, and
+            // only then collapse + hide. A real switch-away still shows a
+            // gone window by then; a return in between cancels the hide.
+            mainHandler.postDelayed({
+                if (ChatBus.supportedVisible) return@postDelayed
+                if (panel != null) togglePanel()
+                syncBubbleVisibility("verified-gone")
+            }, 500)
         }
     }
 
@@ -546,6 +556,9 @@ class OverlayService : Service() {
         renderStoredSummary(panelView)
         makeResizable(panelView.findViewById(R.id.resizeHandle), panelParams!!)
         makeDraggable(panelView.findViewById(R.id.panelHeader), panelParams!!)
+        // The Mood label drags too (hold it like the ✕ button) — only the
+        // tone button consumes its own taps for the tone list.
+        makeDraggable(panelView.findViewById(R.id.moodLabel), panelParams!!)
         windowManager.addView(panel, panelParams)
         // The bubble would sit under/over the panel and steal taps — hide it
         // until the panel closes.

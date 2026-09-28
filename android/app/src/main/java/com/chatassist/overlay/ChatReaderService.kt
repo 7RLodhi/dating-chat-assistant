@@ -165,6 +165,11 @@ class ChatReaderService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val pkg = event?.packageName?.toString() ?: return
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            // Ground truth first: is a supported window still present?
+            // (Transient toasts/usage-reminders fire with foreign packages
+            // while the dating app sits underneath.)
+            ChatBus.supportedVisible =
+                runCatching { findSupportedAppRoot() != null }.getOrDefault(false)
             ChatBus.notifyForeground(pkg)
         }
         if (pkg !in ChatBus.SUPPORTED_PACKAGES) return
