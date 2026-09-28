@@ -243,8 +243,11 @@ class BumbleParser : ChatParser("com.bumble.app") {
  * app) mislabels the whole conversation here. This parser attributes by
  * label instead: "ME" means you, a line matching the header's contact name
  * means the match. Delivery statuses and date headers are filtered as
- * before. Note: snaps/voice notes carry no text — only typed chat is
- * captured, and view-once messages are read only while visible on screen.
+ * before. View-once/photo snaps carry no message text — their player chrome
+ * (replay hints, lens attribution, view counts) collapses into a single
+ * "(sent a snap — no text to read)" placeholder per sender instead of
+ * leaking as phantom messages. View-once messages are read only while
+ * visible on screen.
  */
 class SnapchatParser : ChatParser("com.snapchat.android") {
     override fun isListScreen(title: String?, text: String): Boolean {
@@ -303,6 +306,35 @@ class SnapchatParser : ChatParser("com.snapchat.android") {
     private val quoteHeader = Regex("""^[A-Z][A-Z .]{1,30}\s+\d{1,2}:\d{2}$""")
     private val timeOnly = Regex("""\d{1,2}:\d{2}(:\d{2})?(\s?[AaPp][Mm])?""")
 
+    /**
+     * Snap-media chrome: view-once/photo rows expose no message text, only
+     * player chrome ("Hold to replay or save"), lens attribution split
+     * across leaves ("Purple Orchid" • "6.5B"), and internal IDs
+     * ("snap_envelop"). Individually the lens name is indistinguishable from
+     * chat — but a same-speaker run with 2+ of these markers and at most one
+     * other line IS a media bubble, collapsed to one placeholder row below.
+     */
+    private val mediaCount = Regex("""^\d+(\.\d+)?[KMB]$""")
+    private val mediaId = Regex("""^snap_envelope?$""")
+    private val mediaPhrase =
+        Regex("""^(hold to replay( or save)?|tap to view)$""", RegexOption.IGNORE_CASE)
+
+    private fun isMediaMarker(text: String): Boolean =
+        text == "•" || mediaCount.matches(text) || mediaId.matches(text) ||
+            mediaPhrase.matches(text)
+
+    /**
+     * Lens/studio attribution ("Purple Orchid") vs a real photo caption.
+     * Attribution is short and Title-Cased per word; Hindi-script or
+     * sentence-case lines are captions and must survive. A 2-word Title-Case
+     * caption ("Nice pic!") is the accepted residual — it collapses.
+     */
+    private fun isAttributionLike(text: String): Boolean {
+        val words = text.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
+        if (words.isEmpty() || words.size > 3) return false
+        return words.all { w -> w[0] in 'A'..'Z' }
+    }
+
     override fun parse(root: AccessibilityNodeInfo?): String {
         if (root == null) return ""
         // Contact-name label candidates: the header name, plus its first
@@ -325,7 +357,9 @@ class SnapchatParser : ChatParser("com.snapchat.android") {
             if (text == "ME") "USER" else authorOf(text)
 
         val leaves = collectRawLeaves(root).sortedBy { it.top }.map { it.text }
-        val rows = mutableListOf<String>()
+        // (speaker, body) in reading order; quoted bodies carry a "(quoted)"
+        // prefix from the logic below.
+        val rows = mutableListOf<Pair<String, String>>()
         var speaker: String? = null
         var quoteAuthor: String? = null
         var i = 0
@@ -367,14 +401,37 @@ class SnapchatParser : ChatParser("com.snapchat.android") {
             }
             val quoted = quoteAuthor
             quoteAuthor = null
+            val sp = speaker ?: "MATCH"
             if (quoted != null) {
-                rows.add("[$quoted]: (quoted) $text")
+                rows.add(quoted to "(quoted) $text")
             } else {
-                rows.add("[${speaker ?: "MATCH"}]: $text")
+                rows.add(sp to text)
             }
             i += 1
         }
-        return rows.takeLast(maxMessages).joinToString("\n")
+
+        // Collapse snap-media bubbles: consecutive same-speaker rows with 2+
+        // media markers and at most one other line become a single
+        // placeholder (the leftover line is lens attribution, not chat).
+        // Stray lone markers elsewhere are dropped as chrome.
+        val out = mutableListOf<String>()
+        var j = 0
+        while (j < rows.size) {
+            var k = j
+            while (k < rows.size && rows[k].first == rows[j].first) k++
+            val group = rows.subList(j, k)
+            val markers = group.count { isMediaMarker(it.second) }
+            val unknowns = group.filter { !isMediaMarker(it.second) }.map { it.second }
+            if (markers >= 2 && unknowns.all { isAttributionLike(it) }) {
+                out.add("[${group[0].first}]: (sent a snap — no text to read)")
+            } else {
+                for ((gsp, body) in group) {
+                    if (!isMediaMarker(body)) out.add("[$gsp]: $body")
+                }
+            }
+            j = k
+        }
+        return out.takeLast(maxMessages).joinToString("\n")
     }
 }
 
