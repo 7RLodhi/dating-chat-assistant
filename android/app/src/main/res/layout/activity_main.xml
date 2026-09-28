@@ -305,6 +305,29 @@
             android:layout_marginTop="12dp"
             android:text="Start bubble" />
 
+        <TextView
+            android:id="@+id/statusBattery"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="3. Battery optimization: ?"
+            android:textSize="15sp" />
+
+        <Button
+            android:id="@+id/btnBattery"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="Disable battery optimization" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:text="Nothing/Xiaomi/Oppo kill background bubbles within minutes unless exempted. No exemption = bubble vanishes mid-chat."
+            android:textColor="#6B7280"
+            android:textSize="13sp" />
+
         <Button
             android:id="@+id/btnTest"
             android:layout_width="wrap_content"

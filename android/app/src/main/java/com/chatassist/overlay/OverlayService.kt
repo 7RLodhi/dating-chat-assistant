@@ -529,10 +529,11 @@ class OverlayService : Service() {
         panelView.findViewById<Button>(R.id.btnRefresh).setOnClickListener {
             // Re-capture first: if the reader missed this chat (debounced
             // switch, settled screen), Refresh heals it instead of
-            // re-showing the previous match's data.
+            // re-showing the previous match's data. Forced: manual Refresh
+            // must visibly regenerate, never silently re-serve the cache.
             ChatBus.requestCapture()
             refreshChatSection()
-            loadSuggestions()
+            loadSuggestions(force = true)
         }
         setupToneButton(panelView)
         // Chat starts collapsed on every open (the live chat is already
@@ -622,7 +623,9 @@ class OverlayService : Service() {
                     Prefs.setTone(this@OverlayService, values[i])
                     refreshLabel()
                     options.visibility = View.GONE
-                    loadSuggestions()
+                    // Forced: a tone switch must regenerate in the new tone,
+                    // never re-serve the previous tone's cached batch.
+                    loadSuggestions(force = true)
                 }
             })
         }
@@ -916,7 +919,13 @@ class OverlayService : Service() {
                 line.substringAfter("]:", "").isNotBlank()
         }
 
-    private fun loadSuggestions() {
+    /**
+     * Loads suggestions, from cache when possible. `force` (manual Refresh,
+     * tone switch) always hits the network: Refresh must visibly DO
+     * something, and the tone is part of what makes a batch fresh. Auto
+     * paths (chat switch, flip reload) use the cache to save API calls.
+     */
+    private fun loadSuggestions(force: Boolean = false) {
         if (loadingSuggestions) return
         val panelView = panel ?: return
         val chatLabel = panelView.findViewById<TextView>(R.id.chatLabel)
@@ -944,19 +953,22 @@ class OverlayService : Service() {
         val opener = !hasMatchContent(text)
         chatLabel.text = ChatBus.labelFor(key, snapshot)
         // Smart refresh: same request as last time → re-render the stored
-        // batch instantly instead of burning another API call. The taste
-        // hash is part of the fingerprint so new votes regenerate.
+        // batch instantly instead of burning another API call. Taste, gender
+        // and TONE ride the fingerprint (a tone switch must regenerate, not
+        // re-serve the previous tone's batch); the "v2" scheme prefix retires
+        // batches cached before those rules existed.
         val taste = Prefs.tasteProfile(this)
+        val tone = Prefs.tone(this)
         val mode = if (opener) "opener" else "reply"
         // Gender rides the fingerprint too: declaring it later must
         // regenerate, not re-serve the ungendered batch.
         val genderTag = Prefs.userGender(this).takeIf { it == "male" || it == "female" } ?: ""
         val fingerprint = if (opener) {
-            "opener|${snapshot.title.orEmpty()}|t${taste.hashCode()}|g$genderTag"
+            "v2|$tone|opener|${snapshot.title.orEmpty()}|t${taste.hashCode()}|g$genderTag"
         } else {
-            "reply|$text|t${taste.hashCode()}|g$genderTag"
+            "v2|$tone|reply|$text|t${taste.hashCode()}|g$genderTag"
         }
-        if (snapshot.suggestMode == mode && snapshot.suggestFor == fingerprint &&
+        if (!force && snapshot.suggestMode == mode && snapshot.suggestFor == fingerprint &&
             snapshot.suggestItems.isNotEmpty()
         ) {
             moodText.text = snapshot.suggestMood.ifBlank { "Suggestions ready — tap one to copy." }
@@ -968,7 +980,6 @@ class OverlayService : Service() {
         moodText.text = if (opener) "Thinking of openers…" else "Thinking…"
         list.removeAllViews()
         loadingSuggestions = true
-        val tone = Prefs.tone(this)
         // Declared gender (male/female/unspecified) — the server validates.
         val userGender = Prefs.userGender(this)
         if (opener) {

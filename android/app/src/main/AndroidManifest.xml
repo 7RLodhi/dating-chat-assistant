@@ -4,6 +4,8 @@
 
     <!-- Draw the chat-head bubble over dating apps. -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <!-- Asking the OS not to kill the bubble (one tap in-app, see btnBattery). -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <!-- Network: talk to the suggestion backend. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Foreground service for the persistent bubble. -->

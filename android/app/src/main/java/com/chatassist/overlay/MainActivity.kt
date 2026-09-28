@@ -35,6 +35,7 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var statusOverlay: TextView
     private lateinit var statusA11y: TextView
+    private lateinit var statusBattery: TextView
     private lateinit var testResult: TextView
     private lateinit var btnStart: Button
     private lateinit var versionFooter: TextView
@@ -94,6 +95,7 @@ class MainActivity : AppCompatActivity() {
 
         statusOverlay = findViewById(R.id.statusOverlay)
         statusA11y = findViewById(R.id.statusA11y)
+        statusBattery = findViewById(R.id.statusBattery)
         testResult = findViewById(R.id.testResult)
         btnStart = findViewById(R.id.btnStart)
         versionFooter = findViewById(R.id.versionFooter)
@@ -188,6 +190,19 @@ class MainActivity : AppCompatActivity() {
         }
         findViewById<Button>(R.id.btnA11y).setOnClickListener {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+        }
+        findViewById<Button>(R.id.btnBattery).setOnClickListener {
+            // Direct exemption request; falls back to the system list.
+            try {
+                startActivity(
+                    Intent(
+                        Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                        Uri.parse("package:$packageName"),
+                    )
+                )
+            } catch (_: Exception) {
+                startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+            }
         }
         btnStart.setOnClickListener {
             requestNotificationPermissionIfNeeded()
@@ -358,6 +373,12 @@ class MainActivity : AppCompatActivity() {
         statusOverlay.text = "1. Display over other apps: ${if (overlayOk) "granted ✓" else "not granted"}"
         val a11yOk = isAccessibilityEnabled()
         statusA11y.text = "2. Accessibility service: ${if (a11yOk) "enabled ✓" else "not enabled"}"
+        val pm = getSystemService(POWER_SERVICE) as android.os.PowerManager
+        val exempt = pm.isIgnoringBatteryOptimizations(packageName)
+        statusBattery.text =
+            "3. Battery optimization: ${if (exempt) "off ✓ (bubble stays alive)" else "ON — bubble dies after minutes"}"
+        findViewById<Button>(R.id.btnBattery).visibility =
+            if (exempt) android.view.View.GONE else android.view.View.VISIBLE
     }
 
     private fun isAccessibilityEnabled(): Boolean {
