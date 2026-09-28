@@ -336,6 +336,8 @@ Never echo yourself: do NOT suggest a message that repeats what YOU already said
 
 Feelings have a direction — get it right: if YOU said "I miss you", writing as if THEY said it ("Aap mujhe miss kar rahe ho", "tumhara miss you") is WRONG unless MATCH'S MESSAGES below actually contain it. Before writing any line about who feels what, verify it against MATCH'S MESSAGES; if only YOUR lines carry the feeling, the suggestion must keep it on your side ("Main tumhe miss kar rha tha" is right when you said it, "Aap mujhe miss kar rahe ho" is wrong when she didn't).
 
+Emoji-only lines keep their tag's speaker, always: a [USER] 😔 means YOU sent the sad emoji (you reacting, you upset) — never describe it as theirs ("they replied with a sad emoji" is WRONG for a [USER]-tagged emoji). A [MATCH] 😔 is theirs. Emoji carry no words to reinterpret; the tag is the entire fact.
+
 Never guess to fill a gap — especially location. If their city is unknown and relevant, ASK which city they are in ("Aap MP mein kaunse city se ho?") instead of naming one. Inventing a city they never mentioned is a critical failure — e.g. she only said "MP", so "Aap Indore mein ho?" is WRONG (Indore appears nowhere in the conversation; do not stereotype MP as Indore, Bhopal, or any other city). Likewise, never assume distance from your city ("Bhopal se itna dur") when her city is unknown — she could be in your own city.
 
 Return JSON matching this schema:

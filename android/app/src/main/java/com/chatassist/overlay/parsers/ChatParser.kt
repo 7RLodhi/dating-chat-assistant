@@ -273,6 +273,12 @@ class SnapchatParser : ChatParser("com.snapchat.android") {
         // without this they become phantom message rows (and get mailed to
         // the LLM as things somebody "said").
         Regex("""\d{1,2}:\d{2}(:\d{2})?(\s?[AaPp][Mm])?"""),
+        // Delivery receipts WITH a clock time ("Opened 16:00") — the bare
+        // words are covered by skipExactTexts, but the timed variants would
+        // otherwise become phantom rows. (They must die here and not in the
+        // quote-header rule below, which would misread "Opened 16:00" as a
+        // "NAME time" header and flip the NEXT line's speaker.)
+        Regex("""(?i)^(delivered|opened|received|sent|viewed)\s+\d{1,2}:\d{2}(:\d{2})?(\s?[ap]m)?$"""),
     )
 
     // Feed-row fingerprints. Internal view IDs (avatar_container,
@@ -303,7 +309,7 @@ class SnapchatParser : ChatParser("com.snapchat.android") {
      * tag the quoted line with its true author, so the following messages
      * keep the quoter's side.
      */
-    private val quoteHeader = Regex("""^[A-Z][A-Z .]{1,30}\s+\d{1,2}:\d{2}$""")
+    private val quoteHeader = Regex("""^(?!DELIVERED\b|OPENED\b|RECEIVED\b|SENT\b|VIEWED\b)[A-Z][A-Z .]{1,30}\s+\d{1,2}:\d{2}$""")
     private val timeOnly = Regex("""\d{1,2}:\d{2}(:\d{2})?(\s?[AaPp][Mm])?""")
 
     /**
