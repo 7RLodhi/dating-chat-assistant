@@ -18,12 +18,10 @@ export type ModelTier = "standard" | "premium";
 
 function resolveModel(provider: Provider, tier: ModelTier): string {
   if (provider === "anthropic") {
-    // Premium default is the dated Sonnet ID verified present on this key
-    // via GET /v1/models (bare "claude-sonnet-4-5" alias not listed there —
-    // Haiku's bare alias resolves, but pinning the exact ID removes all
-    // doubt for the tier you're paying extra for). Override freely.
+    // Premium default is Sonnet 5.5 (verified present on this key via GET
+    // /v1/models). Override freely.
     return tier === "premium"
-      ? process.env.ANTHROPIC_PREMIUM_MODEL || "claude-sonnet-4-5-20250929"
+      ? process.env.ANTHROPIC_PREMIUM_MODEL || "claude-sonnet-5-5"
       : process.env.ANTHROPIC_MODEL || "claude-haiku-4-5";
   }
   return tier === "premium"
