@@ -216,7 +216,7 @@ async function callAnthropicForJSON<T>(params: {
   // ANTHROPIC_PREMIUM_MODEL for the premium tier) if you want a pinned,
   // reproducible version instead.
   const model = resolveModel("anthropic", params.tier ?? "standard");
-  const { systemPrompt, userPrompt, schema, temperature = 0.9, maxTokens = 700 } = params;
+  const { systemPrompt, userPrompt, schema, temperature = 0.9, maxTokens: maxTokensParam } = params;
 
   const controller = new AbortController();
   const timeout = setTimeout(
@@ -225,9 +225,9 @@ async function callAnthropicForJSON<T>(params: {
   );
 
   // The 5.x family rejects forced tool choice (400: tool_choice "tool"/"any"
-  // not supported for the model), so all Anthropic calls use "auto" and
-  // fall back to parsing JSON text — the same shape the OpenAI path
-  // already relies on. If neither yields valid JSON, one corrective retry.
+  // not supported for the model), so all Anthropic calls use "auto" 4.x and
+  // text-JSON 5.x, both with parse + corrective-retry fallback — the same
+  // shape the OpenAI path already relies on.
   // The 5.x family deprecated `temperature` (400 if sent) — omit it there,
   // keep it everywhere else. Major version is parsed from the model ID
   // (claude-<family>-<major>…); unparseable IDs assume support.
@@ -235,20 +235,35 @@ async function callAnthropicForJSON<T>(params: {
     const m = model.match(/claude-[a-z]+-(\d+)/i);
     return m ? parseInt(m[1], 10) : null;
   })();
+  const modernModel = (majorVersion ?? 4) >= 5;
+  // 5.x also rejects forced tool choice AND fumbles complex tool schemas
+  // (observed: malformed tool input + empty parallel tool call, burning the
+  // whole token budget). So 5.x gets pure text-JSON mode — the prompt
+  // already carries the full "return JSON matching this schema" text for
+  // the OpenAI path — with the same parse + corrective-retry safety net.
+  // 4.x keeps tool calls (auto choice + text fallback covers both).
+  const toolsPart = modernModel
+    ? {}
+    : {
+        tools: [
+          {
+            name: ANTHROPIC_TOOL_NAME,
+            description: "Return the suggestions in the required structured format.",
+            input_schema: schema,
+          },
+        ],
+        tool_choice: { type: "auto" },
+      };
+  // 5.x runs wordier: give it headroom so a full reply batch isn't cut off
+  // mid-JSON (observed stop_reason=max_tokens at 700 on the first attempt).
+  const effectiveMaxTokens = maxTokensParam ?? (modernModel ? 1500 : 700);
   const body: Record<string, unknown> = {
     model,
-    max_tokens: maxTokens,
+    max_tokens: effectiveMaxTokens,
     ...(majorVersion === null || majorVersion < 5 ? { temperature } : {}),
     system: systemPrompt,
     messages: [{ role: "user", content: userPrompt }],
-    tools: [
-      {
-        name: ANTHROPIC_TOOL_NAME,
-        description: "Return the suggestions in the required structured format.",
-        input_schema: schema,
-      },
-    ],
-    tool_choice: { type: "auto" },
+    ...toolsPart,
   };
 
   try {
