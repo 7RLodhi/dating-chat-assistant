@@ -99,10 +99,9 @@ class ChatReaderService : AccessibilityService() {
      */
     private fun handlePasteRequest(text: String, callback: (Boolean) -> Unit) {
         try {
-            // Never trust rootInActiveWindow alone: whatever holds focus
-            // (keyboard, a popup, our own bubble) may own the active window.
-            // Scan all windows for a supported dating app instead.
-            val root = findSupportedAppRoot() ?: run { callback(false); return }
+            // Conversation window directly (not just any supported window):
+            // the input must exist for the paste to land anywhere.
+            val root = findConversationRoot() ?: run { callback(false); return }
             // Per-app kill switch: never paste into an app the user unchecked.
             val pkg = root.packageName?.toString().orEmpty()
             if (!ChatBus.isAppEnabled(pkg)) {
@@ -142,6 +141,27 @@ class ChatReaderService : AccessibilityService() {
         // Fallback: single active window, still package-gated.
         val root = rootInActiveWindow ?: return null
         return if (root.packageName?.toString() in ChatBus.SUPPORTED_PACKAGES) root else null
+    }
+
+    /**
+     * The conversation window: a supported app's window that actually holds
+     * a chat input. Popups (text-selection Cut/Copy toolbar), toasts and
+     * feed windows share the app's package but carry no input — picking the
+     * first supported window blindly parses those instead of the chat, and
+     * the missing input then wrongly clears the conversation verdict (the
+     * bubble vanished every time text was selected). Null when no
+     * conversation window exists; callers treat that as "not a chat".
+     * Pass null to accept any supported app (tap-to-paste).
+     */
+    private fun findConversationRoot(pkg: String? = null): AccessibilityNodeInfo? {
+        runCatching { windows }.getOrNull()?.forEach { window ->
+            val root = runCatching { window?.root }.getOrNull() ?: return@forEach
+            val rp = root.packageName?.toString() ?: return@forEach
+            if (rp !in ChatBus.SUPPORTED_PACKAGES) return@forEach
+            if (pkg != null && rp != pkg) return@forEach
+            if (ChatParser.forPackage(rp).hasChatInput(root)) return root
+        }
+        return null
     }
 
     /**
@@ -237,15 +257,16 @@ class ChatReaderService : AccessibilityService() {
         }
 
         try {
-            // Same helper as tap-to-paste: the focused window may be the
-            // keyboard or a popup, so scan for the dating app's window and
-            // require it to match the event's package (never our panel).
-            val root = findSupportedAppRoot() ?: run {
-                ChatBus.noteCaptureSkip("no-root")
-                return false
-            }
-            if (root.packageName?.toString() != pkg) {
-                ChatBus.noteCaptureSkip("pkg-mismatch")
+            // Conversation window first: popups (text-selection Cut/Copy
+            // toolbar), toasts and feeds share the app's package but carry
+            // no chat input. Parsing those instead of the chat both poisoned
+            // snapshots and wrongly cleared the conversation verdict.
+            val root = findConversationRoot(pkg)
+            if (root == null) {
+                // No supported window at all, or none holding a chat input
+                // (feed/list/popup only): not a conversation, clear verdict.
+                ChatBus.inConversation = false
+                ChatBus.noteCaptureSkip("no-conversation-window")
                 return false
             }
             val parser = ChatParser.forPackage(pkg)
@@ -256,19 +277,10 @@ class ChatReaderService : AccessibilityService() {
                 return false
             }
             lastTreeHash[pkg] = treeHash
-            // Only real conversation screens: a chat input must be on screen
-            // (kills chat-lists, Status/Calls tabs, feeds, contact info…),
-            // and list-screen markers are double-checked after parsing.
-            // The verdict also drives bubble visibility (conversation-only),
-            // so it is set true ONLY where a snapshot is actually stored
-            // below — setting it here, before the contamination/list gates,
-            // produced visible bubbles over dead panels (flag true, no
-            // snapshot) whenever a frame was dropped after this point.
-            if (!parser.hasChatInput(root)) {
-                ChatBus.inConversation = false
-                ChatBus.noteCaptureSkip("no-input")
-                return false
-            }
+            // Chat-input presence was already verified by
+            // findConversationRoot above (which is also why list/feed
+            // screens never reach the parse below); list-screen markers are
+            // still double-checked after parsing for odd screens.
             val text = parser.parse(root)
             // Mid-transition frames (feed rows mixed into chat) are dropped
             // outright — publishing them would poison the snapshot and every

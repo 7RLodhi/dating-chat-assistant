@@ -175,8 +175,8 @@ object ChatBus {
      * Capture-skip counters (this run only): every time the reader decides
      * NOT to publish, the reason tallies here. Surfaced in the Capture log
      * screen — if a chat never appears, these counters name the exact gate
-     * that ate it (debounced, hash-same, no-input, list-screen,
-     * empty-titleless, contaminated, no-root, pkg-mismatch).
+     * that ate it (debounced, hash-same, no-conversation-window,
+     * list-screen, empty-titleless, contaminated, app-disabled, exception).
      */
     private val skipCounts = mutableMapOf<String, Int>()
 
