@@ -163,6 +163,13 @@ app to go back to tap-to-copy. Safeguards, all deliberate:
   list-screen, crash) can never again strand a visible bubble over a dead
   panel. Parse crashes are counted in the capture log ("exception") instead
   of swallowed silently.
+- **Summary learns only on tap:** scrolling, expanding, and Refresh never
+  touch the learned summary — only the panel's Learn button (and the
+  detail screens' Load buttons) fetch facts, so a settled summary stays put.
+- **My chat style:** the app's style section analyzes pasted samples (or
+  harvests your own captured lines) via /api/style, sends the voice with
+  every generation, re-learns on demand, and imports/exports the profile as
+  clipboard JSON for backup or device moves.
 - **Tap-to-flip attribution:** tapping a chat row in the panel reassigns it
   to the other side, stores the correction positionally (survives
   re-captures), and regenerates suggestions from the corrected text.

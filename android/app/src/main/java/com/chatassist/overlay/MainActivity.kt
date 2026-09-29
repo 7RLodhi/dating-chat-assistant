@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.widget.Button
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.RadioButton
 import android.widget.RadioGroup
@@ -48,6 +49,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var autoPasteSwitch: androidx.appcompat.widget.SwitchCompat
     private lateinit var matchList: LinearLayout
     private lateinit var matchEmptyHint: TextView
+    private lateinit var styleStatus: TextView
+    private lateinit var styleUpdatedAt: TextView
+    private lateinit var styleSamplesEdit: EditText
+    private var analyzingStyle = false
 
     private val pickImage = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri == null) {
@@ -97,6 +102,28 @@ class MainActivity : AppCompatActivity() {
         autoPasteSwitch = findViewById(R.id.autoPasteSwitch)
         matchList = findViewById(R.id.matchList)
         matchEmptyHint = findViewById(R.id.matchEmptyHint)
+        styleStatus = findViewById(R.id.styleStatus)
+        styleUpdatedAt = findViewById(R.id.styleUpdatedAt)
+        styleSamplesEdit = findViewById(R.id.styleSamplesEdit)
+        styleSamplesEdit.setText(Prefs.chatStyleSamples(this))
+        renderStyleUi()
+        findViewById<Button>(R.id.btnAnalyzeStyle).setOnClickListener {
+            val samples = styleSamplesEdit.text.toString().trim()
+            if (samples.isEmpty()) {
+                toast("Paste a few of your messages first.")
+                return@setOnClickListener
+            }
+            runStyleAnalysis(samples, samples)
+        }
+        findViewById<Button>(R.id.btnLearnStyle).setOnClickListener { learnStyleFromChats() }
+        findViewById<Button>(R.id.btnClearStyle).setOnClickListener {
+            Prefs.clearChatStyle(this)
+            styleSamplesEdit.setText("")
+            renderStyleUi()
+            toast("Chat style cleared.")
+        }
+        findViewById<Button>(R.id.btnExportStyle).setOnClickListener { exportStyle() }
+        findViewById<Button>(R.id.btnImportStyle).setOnClickListener { importStyle() }
         findViewById<Button>(R.id.btnCaptureLog).setOnClickListener {
             startActivity(android.content.Intent(this, CaptureLogActivity::class.java))
         }
@@ -320,6 +347,124 @@ class MainActivity : AppCompatActivity() {
         "Instagram" to "com.instagram.android",
         "WhatsApp" to "com.whatsapp",
     )
+
+    private fun toast(msg: String) {
+        android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_SHORT).show()
+    }
+
+    /** "My chat style": your samples plus the analyzed voice profile. */
+    private fun renderStyleUi() {
+        val raw = Prefs.chatStyleJson(this)
+        val parsed = runCatching { JSONObject(raw) }.getOrNull()
+        val summary = parsed?.optString("summary", "").orEmpty().trim()
+        if (summary.isBlank()) {
+            styleStatus.text = "No style saved yet — paste samples below or tap Learn from my chats."
+            styleUpdatedAt.text = ""
+            return
+        }
+        val traits = (0 until (parsed?.optJSONArray("traits")?.length() ?: 0)).mapNotNull {
+            parsed?.optJSONArray("traits")?.optString(it)?.trim()?.takeIf { s -> s.isNotEmpty() }
+        }
+        styleStatus.text = summary + if (traits.isNotEmpty()) "\n• " + traits.joinToString("\n• ") else ""
+        val at = parsed?.optLong("at", 0L) ?: 0L
+        styleUpdatedAt.text = if (at > 0) {
+            "Learned " + java.text.SimpleDateFormat("HH:mm, dd MMM", java.util.Locale.getDefault())
+                .format(java.util.Date(at))
+        } else {
+            ""
+        }
+    }
+
+    private fun runStyleAnalysis(samples: String, saveSamples: String) {
+        if (analyzingStyle) return
+        analyzingStyle = true
+        styleStatus.text = "Analyzing your writing…"
+        ApiClient.analyzeStyle(Prefs.backendUrl(this), samples) { result ->
+            analyzingStyle = false
+            result.fold(
+                onSuccess = { profile ->
+                    Prefs.setChatStyleSamples(this, saveSamples)
+                    Prefs.setChatStyleJson(
+                        this,
+                        JSONObject()
+                            .put("summary", profile.summary)
+                            .put("traits", org.json.JSONArray(profile.traits))
+                            .put("at", System.currentTimeMillis())
+                            .toString(),
+                    )
+                    styleSamplesEdit.setText(saveSamples)
+                    renderStyleUi()
+                    toast("Style saved — future suggestions write like you.")
+                },
+                onFailure = { e ->
+                    renderStyleUi()
+                    toast("Couldn't analyze: ${e.message}")
+                },
+            )
+        }
+    }
+
+    /** Harvests YOUR lines from every captured chat and analyzes them. */
+    private fun learnStyleFromChats() {
+        val mine = ChatBus.all().asSequence()
+            .flatMap { (_, s) ->
+                ChatBus.applySpeakerFixes(s.text, s.speakerFixes).lineSequence()
+            }
+            .map { it.trim() }
+            .filter { it.startsWith("[USER]", ignoreCase = true) }
+            .map { it.substringAfter("]:", it).trim() }
+            .filter { it.isNotEmpty() }
+            .distinct()
+            .take(60)
+            .toList()
+        val samples = mine.joinToString("\n").take(3500)
+        if (samples.isBlank()) {
+            toast("No messages from you captured yet — chat first, then tap again.")
+            return
+        }
+        runStyleAnalysis(samples, samples)
+    }
+
+    private fun exportStyle() {
+        val analysis = runCatching { JSONObject(Prefs.chatStyleJson(this)) }.getOrElse { JSONObject() }
+        val payload = JSONObject()
+            .put("app", "chat-assist-style")
+            .put("v", 1)
+            .put("samples", Prefs.chatStyleSamples(this))
+            .put("analysis", analysis)
+            .toString()
+        val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        cm.setPrimaryClip(android.content.ClipData.newPlainText("chat-style", payload))
+        toast("Style copied — paste it anywhere to back up or move devices.")
+    }
+
+    private fun importStyle() {
+        val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        val raw = cm.primaryClip?.getItemAt(0)?.coerceToText(this)?.toString().orEmpty()
+        try {
+            val json = JSONObject(raw)
+            if (json.optString("app") != "chat-assist-style") {
+                throw IllegalArgumentException("not a style export")
+            }
+            val samples = json.optString("samples", "").trim()
+            if (samples.isEmpty()) throw IllegalArgumentException("export has no samples")
+            val analysis = json.optJSONObject("analysis") ?: JSONObject()
+            Prefs.setChatStyleSamples(this, samples)
+            if (analysis.optString("summary", "").isNotBlank()) {
+                if (analysis.optLong("at", 0L) == 0L) {
+                    analysis.put("at", System.currentTimeMillis())
+                }
+                Prefs.setChatStyleJson(this, analysis.toString())
+            } else {
+                Prefs.setChatStyleJson(this, "")
+            }
+            styleSamplesEdit.setText(samples)
+            renderStyleUi()
+            toast("Style imported.")
+        } catch (_: Exception) {
+            toast("Clipboard doesn't hold a style export — Export first, then copy.")
+        }
+    }
 
     private fun renderAppsList() {
         val list = findViewById<LinearLayout>(R.id.appsList)

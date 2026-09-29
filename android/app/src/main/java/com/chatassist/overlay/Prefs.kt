@@ -134,7 +134,6 @@ object Prefs {
     // Declared user gender ("male" | "female" | "unspecified"): drives Hindi
     // verb agreement for the user's own lines. Unspecified = old behavior.
     private const val KEY_USER_GENDER = "user_gender"
-
     fun userGender(ctx: Context): String =
         ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE)
             .getString(KEY_USER_GENDER, "unspecified") ?: "unspecified"
@@ -143,6 +142,38 @@ object Prefs {
         val value = if (gender == "male" || gender == "female") gender else "unspecified"
         ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
             .putString(KEY_USER_GENDER, value).apply()
+    }
+
+    // "My chat style": raw samples of messages the user actually sent, plus
+    // the analyzed profile JSON {"summary": str, "traits": [...], "at": ms}.
+    // Samples ride along as styleExamples with every generation (same
+    // contract as the web StylePanel); the analysis is display only.
+    private const val KEY_CHAT_STYLE_SAMPLES = "chat_style_samples"
+    private const val KEY_CHAT_STYLE_JSON = "chat_style_json"
+
+    fun chatStyleSamples(ctx: Context): String =
+        ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            .getString(KEY_CHAT_STYLE_SAMPLES, "").orEmpty()
+
+    fun setChatStyleSamples(ctx: Context, samples: String) {
+        ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+            .putString(KEY_CHAT_STYLE_SAMPLES, samples.take(4000)).apply()
+    }
+
+    fun chatStyleJson(ctx: Context): String =
+        ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            .getString(KEY_CHAT_STYLE_JSON, "").orEmpty()
+
+    fun setChatStyleJson(ctx: Context, json: String) {
+        ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+            .putString(KEY_CHAT_STYLE_JSON, json).apply()
+    }
+
+    fun clearChatStyle(ctx: Context) {
+        ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+            .remove(KEY_CHAT_STYLE_SAMPLES)
+            .remove(KEY_CHAT_STYLE_JSON)
+            .apply()
     }
 
     // ---- Learned taste (mirrors webapp/lib/tasteProfile.ts exactly) ----

@@ -553,6 +553,15 @@ class OverlayService : Service() {
             refreshChatSection()
             loadSuggestions(force = true)
         }
+        // Learn = Refresh, plus re-learns the match summary from whatever
+        // is on screen right now. The ONLY path that fetches facts — rows,
+        // toggles and scrolling never trigger learning on their own.
+        panelView.findViewById<Button>(R.id.btnLearn).setOnClickListener {
+            ChatBus.requestCapture()
+            refreshChatSection()
+            loadSuggestions(force = true)
+            loadFacts()
+        }
         setupToneButton(panelView)
         // Chat starts collapsed on every open (the live chat is already
         // visible behind the panel; rows are one tap away if needed).
@@ -689,11 +698,13 @@ class OverlayService : Service() {
         val scroll = panelView.findViewById<View>(R.id.summaryScroll)
         updateSummaryToggle(toggle)
         scroll.visibility = if (summaryExpanded) View.VISIBLE else View.GONE
+        // Expand/collapse is display-only now: learning happens exclusively
+        // through the Learn button, so scrolling or toggling can never make
+        // a settled summary churn under you.
         toggle.setOnClickListener {
             summaryExpanded = !summaryExpanded
             scroll.visibility = if (summaryExpanded) View.VISIBLE else View.GONE
             updateSummaryToggle(toggle)
-            if (summaryExpanded) loadFacts()
         }
     }
 
@@ -702,7 +713,6 @@ class OverlayService : Service() {
         val panelView = panel ?: return
         renderChatSection(panelView)
         renderStoredSummary(panelView)
-        if (summaryExpanded) loadFacts()
     }
 
     private data class ChatRow(val speaker: String, val body: String)
@@ -982,12 +992,14 @@ class OverlayService : Service() {
         val tone = Prefs.tone(this)
         val mode = if (opener) "opener" else "reply"
         // Gender rides the fingerprint too: declaring it later must
-        // regenerate, not re-serve the ungendered batch.
+        // regenerate, not re-serve the ungendered batch. Same for the
+        // chat-style samples: saving a voice must invalidate the cache.
         val genderTag = Prefs.userGender(this).takeIf { it == "male" || it == "female" } ?: ""
+        val style = Prefs.chatStyleSamples(this).trim().take(4000)
         val fingerprint = if (opener) {
-            "v2|$tone|opener|${snapshot.title.orEmpty()}|t${taste.hashCode()}|g$genderTag"
+            "v2|$tone|opener|${snapshot.title.orEmpty()}|t${taste.hashCode()}|g$genderTag|s${style.hashCode()}"
         } else {
-            "v2|$tone|reply|$text|t${taste.hashCode()}|g$genderTag"
+            "v2|$tone|reply|$text|t${taste.hashCode()}|g$genderTag|s${style.hashCode()}"
         }
         if (!force && snapshot.suggestMode == mode && snapshot.suggestFor == fingerprint &&
             snapshot.suggestItems.isNotEmpty()
@@ -1012,6 +1024,7 @@ class OverlayService : Service() {
                 callback = { result -> onSuggestionsLoaded(result, moodText, list, key, mode, fingerprint) },
                 tasteProfile = taste,
                 userGender = userGender,
+                styleExamples = style,
             )
         } else {
             ApiClient.fetchSuggestions(
@@ -1020,6 +1033,7 @@ class OverlayService : Service() {
                 callback = { result -> onSuggestionsLoaded(result, moodText, list, key, mode, fingerprint) },
                 tasteProfile = taste,
                 userGender = userGender,
+                styleExamples = style,
             )
         }
     }

@@ -63,6 +63,7 @@ object ApiClient {
         callback: (Result<SuggestionResult>) -> Unit,
         tasteProfile: String = "",
         userGender: String = "",
+        styleExamples: String = "",
     ) {
         Thread {
             try {
@@ -76,6 +77,7 @@ object ApiClient {
                     .put("matchName", matchName)
                     .put("tasteProfile", tasteProfile)
                     .put("userGender", userGender)
+                    .put("styleExamples", styleExamples)
                     .toString()
 
                 val conn = (URL(backendUrl).openConnection() as HttpURLConnection).apply {
@@ -159,6 +161,61 @@ object ApiClient {
                         .use { it.readText() }
                 )
                 mainHandler.post { callback(Result.success(json to buildFactSheet(json))) }
+            } catch (e: Exception) {
+                mainHandler.post { callback(Result.failure(e)) }
+            }
+        }.start()
+    }
+
+    /** Learned writing-voice profile: one-line summary plus traits. */
+    data class StyleProfile(
+        val summary: String,
+        val traits: List<String>,
+    )
+
+    /**
+     * Analyzes sample messages into a writing-voice profile (same contract
+     * as the web app's /api/style, which the web StylePanel uses).
+     */
+    fun analyzeStyle(
+        backendUrl: String,
+        samples: String,
+        callback: (Result<StyleProfile>) -> Unit,
+    ) {
+        Thread {
+            try {
+                val styleUrl = if (backendUrl.endsWith("/api/suggest")) {
+                    backendUrl.removeSuffix("/api/suggest") + "/api/style"
+                } else {
+                    "$backendUrl/api/style"
+                }
+                val body = JSONObject()
+                    .put("sampleMessages", samples)
+                    .toString()
+
+                val conn = (URL(styleUrl).openConnection() as HttpURLConnection).apply {
+                    requestMethod = "POST"
+                    setRequestProperty("Content-Type", "application/json")
+                    connectTimeout = 15000
+                    readTimeout = 45000
+                    doOutput = true
+                }
+                OutputStreamWriter(conn.outputStream, StandardCharsets.UTF_8).use { it.write(body.toString()) }
+
+                val code = conn.responseCode
+                if (code !in 200..299) {
+                    throw IllegalStateException("Backend returned ${backendError(conn, code)}")
+                }
+                val json = JSONObject(
+                    BufferedReader(InputStreamReader(conn.inputStream, StandardCharsets.UTF_8))
+                        .use { it.readText() }
+                )
+                val summary = json.optString("summary", "").trim()
+                if (summary.isEmpty()) throw IllegalStateException("Backend returned no analysis")
+                val traits = (0 until (json.optJSONArray("traits")?.length() ?: 0)).mapNotNull {
+                    json.optJSONArray("traits")?.optString(it)?.trim()?.takeIf { s -> s.isNotEmpty() }
+                }
+                mainHandler.post { callback(Result.success(StyleProfile(summary, traits))) }
             } catch (e: Exception) {
                 mainHandler.post { callback(Result.failure(e)) }
             }
