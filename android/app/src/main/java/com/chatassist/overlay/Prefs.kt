@@ -114,6 +114,23 @@ object Prefs {
             .putString(KEY_CUSTOM_ICON_URI, uri).apply()
     }
 
+    // Per-app kill switch (Apps section in the app screen). Default: every
+    // supported app on — unchecking hides the bubble and stops capture
+    // there, instantly, no restart needed.
+    private const val KEY_ENABLED_APPS = "enabled_apps"
+
+    fun enabledApps(ctx: Context): Set<String> =
+        ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            .getStringSet(KEY_ENABLED_APPS, null)
+            ?: ChatBus.SUPPORTED_PACKAGES
+
+    fun setAppEnabled(ctx: Context, appPackage: String, enabled: Boolean) {
+        val cur = enabledApps(ctx).toMutableSet()
+        if (enabled) cur.add(appPackage) else cur.remove(appPackage)
+        ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+            .putStringSet(KEY_ENABLED_APPS, cur).apply()
+    }
+
     // Declared user gender ("male" | "female" | "unspecified"): drives Hindi
     // verb agreement for the user's own lines. Unspecified = old behavior.
     private const val KEY_USER_GENDER = "user_gender"

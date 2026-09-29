@@ -155,6 +155,9 @@ app to go back to tap-to-copy. Safeguards, all deliberate:
 - **One row per chat:** keys merge case-insensitively, so "NIDHIII…" /
   "Nidhiii…" can never list twice; matches keep hand-added notes and learned
   summaries across re-captures.
+- **Per-app switches:** the app's Apps section enables/disables each dating
+  app individually (default all on). Unchecked apps get no bubble, no
+  capture, no paste, and no panel — instantly, no restart.
 - **Tap-to-flip attribution:** tapping a chat row in the panel reassigns it
   to the other side, stores the correction positionally (survives
   re-captures), and regenerates suggestions from the corrected text.

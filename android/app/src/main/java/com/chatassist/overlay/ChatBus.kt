@@ -81,6 +81,16 @@ object ChatBus {
     }
 
     /**
+     * User-selected per-app kill switch (Apps section in the app screen).
+     * Fail-open when no context is stored yet — capture must never break
+     * because a preference read raced service startup.
+     */
+    fun isAppEnabled(appPackage: String): Boolean {
+        val ctx = appContext ?: return true
+        return Prefs.enabledApps(ctx).contains(appPackage)
+    }
+
+    /**
      * Whether the current window is an actual chat conversation (chat input
      * on screen, not a list/feed/status screen). The bubble — and therefore
      * the panel — exists ONLY here. Updated by the reader on every capture

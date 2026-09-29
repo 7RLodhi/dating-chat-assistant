@@ -120,6 +120,7 @@ class MainActivity : AppCompatActivity() {
                 },
             )
         }
+        renderAppsList()
 
         versionFooter.text = "v${appVersionName()} (${appVersionCode()})"
         syncAppearanceUi()
@@ -309,6 +310,43 @@ class MainActivity : AppCompatActivity() {
         return line
     }
 
+
+    /** Per-app kill switches: label + package, in a stable display order. */
+    private val appRows = listOf(
+        "Tinder" to "com.tinder",
+        "Hinge" to "co.hinge.app",
+        "Bumble" to "com.bumble.app",
+        "Snapchat" to "com.snapchat.android",
+        "Instagram" to "com.instagram.android",
+        "WhatsApp" to "com.whatsapp",
+    )
+
+    private fun renderAppsList() {
+        val list = findViewById<LinearLayout>(R.id.appsList)
+        list.removeAllViews()
+        val enabled = Prefs.enabledApps(this)
+        for ((label, pkg) in appRows) {
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                setPadding(0, 8, 0, 8)
+            }
+            row.addView(TextView(this).apply {
+                text = label
+                textSize = 15f
+                layoutParams = LinearLayout.LayoutParams(
+                    0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
+                )
+            })
+            row.addView(androidx.appcompat.widget.SwitchCompat(this).apply {
+                isChecked = enabled.contains(pkg)
+                setOnCheckedChangeListener { _, checked ->
+                    Prefs.setAppEnabled(this@MainActivity, pkg, checked)
+                }
+            })
+            list.addView(row)
+        }
+    }
 
     private fun appVersionName(): String {
         return try {

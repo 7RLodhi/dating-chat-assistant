@@ -87,7 +87,7 @@ class ChatReaderService : AccessibilityService() {
      */
     private fun handleCaptureRequest(): Boolean {
         val fg = ChatBus.foregroundPackage
-        if (fg !in ChatBus.SUPPORTED_PACKAGES) return false
+        if (fg !in ChatBus.SUPPORTED_PACKAGES || !ChatBus.isAppEnabled(fg)) return false
         return publishCurrent(fg, force = true)
     }
 
@@ -103,6 +103,12 @@ class ChatReaderService : AccessibilityService() {
             // (keyboard, a popup, our own bubble) may own the active window.
             // Scan all windows for a supported dating app instead.
             val root = findSupportedAppRoot() ?: run { callback(false); return }
+            // Per-app kill switch: never paste into an app the user unchecked.
+            val pkg = root.packageName?.toString().orEmpty()
+            if (!ChatBus.isAppEnabled(pkg)) {
+                callback(false)
+                return
+            }
             val field = findChatInput(root) ?: run { callback(false); return }
             field.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
             val args = Bundle().apply {
@@ -184,6 +190,14 @@ class ChatReaderService : AccessibilityService() {
             if (!ChatBus.isOverlayContext(pkg, packageName)) {
                 ChatBus.inConversation = false
             }
+            return
+        }
+        // User-disabled app: no capture, no bubble, no panel — and the
+        // verdict clears so nothing stale lingers. Foreground tracking
+        // above still ran, so hide-on-leave keeps working.
+        if (!ChatBus.isAppEnabled(pkg)) {
+            ChatBus.inConversation = false
+            ChatBus.noteCaptureSkip("app-disabled")
             return
         }
         if (event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED &&
