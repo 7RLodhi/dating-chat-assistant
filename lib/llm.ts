@@ -224,51 +224,48 @@ async function callAnthropicForJSON<T>(params: {
     (params.tier ?? "standard") === "premium" ? 50000 : 15000
   );
 
-  try {
-    const res = await fetch(ANTHROPIC_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": ANTHROPIC_VERSION,
+  // The 5.x family rejects forced tool choice (400: tool_choice "tool"/"any"
+  // not supported for the model), so all Anthropic calls use "auto" and
+  // fall back to parsing JSON text — the same shape the OpenAI path
+  // already relies on. If neither yields valid JSON, one corrective retry.
+  const body: Record<string, unknown> = {
+    model,
+    max_tokens: maxTokens,
+    temperature,
+    system: systemPrompt,
+    messages: [{ role: "user", content: userPrompt }],
+    tools: [
+      {
+        name: ANTHROPIC_TOOL_NAME,
+        description: "Return the suggestions in the required structured format.",
+        input_schema: schema,
       },
-      body: JSON.stringify({
-        model,
-        max_tokens: maxTokens,
-        temperature,
-        system: systemPrompt,
-        messages: [{ role: "user", content: userPrompt }],
-        // Forcing a tool call with an explicit input_schema is Anthropic's
-        // equivalent of OpenAI's json_object/json_schema modes — it's the
-        // reliable way to get back structured JSON instead of parsing free
-        // text.
-        tools: [
-          {
-            name: ANTHROPIC_TOOL_NAME,
-            description: "Return the suggestions in the required structured format.",
-            input_schema: schema,
-          },
-        ],
-        tool_choice: { type: "tool", name: ANTHROPIC_TOOL_NAME },
-      }),
-      signal: controller.signal,
-    });
+    ],
+    tool_choice: { type: "auto" },
+  };
 
-    if (!res.ok) {
-      const errBody = await res.text();
-      throw new LLMError(`LLM request failed (${res.status}): ${errBody}`);
-    }
+  try {
+    const first = await requestAnthropic(body, apiKey, controller.signal);
+    const parsed = extractAnthropicJSON<T>(first);
+    if (parsed) return parsed;
 
-    const data = await res.json();
-    const toolUseBlock = (data?.content as Array<Record<string, unknown>> | undefined)?.find(
-      (block) => block.type === "tool_use"
+    const retryBody: Record<string, unknown> = {
+      ...body,
+      messages: [
+        { role: "user", content: userPrompt },
+        { role: "assistant", content: first.text === "" ? "(empty response)" : first.text },
+        {
+          role: "user",
+          content: "That was not valid JSON. Return ONLY valid JSON matching the schema, with no extra text.",
+        },
+      ],
+    };
+    const retryParsed = extractAnthropicJSON<T>(
+      await requestAnthropic(retryBody, apiKey, controller.signal)
     );
+    if (retryParsed) return retryParsed;
 
-    if (!toolUseBlock || typeof toolUseBlock.input !== "object") {
-      throw new LLMError("Anthropic response did not include the expected tool call.");
-    }
-
-    return toolUseBlock.input as T;
+    throw new LLMError("Model did not return valid JSON after retry.");
   } catch (err) {
     // See the OpenAI path above: map aborts to a meaningful LLMError.
     if (err instanceof Error && err.name === "AbortError") {
@@ -278,6 +275,49 @@ async function callAnthropicForJSON<T>(params: {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+/** One raw message send; returns tool input (if the model called the tool) plus concatenated text. */
+async function requestAnthropic(
+  body: Record<string, unknown>,
+  apiKey: string,
+  signal: AbortSignal
+): Promise<{ toolInput: unknown; text: string }> {
+  const res = await fetch(ANTHROPIC_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": ANTHROPIC_VERSION,
+    },
+    body: JSON.stringify(body),
+    signal,
+  });
+
+  if (!res.ok) {
+    const errBody = await res.text();
+    throw new LLMError(`LLM request failed (${res.status}): ${errBody}`);
+  }
+
+  const data = await res.json();
+  const blocks = (data?.content as Array<Record<string, unknown>> | undefined) ?? [];
+  const toolUseBlock = blocks.find((block) => block.type === "tool_use");
+  const text = blocks
+    .filter((block) => block.type === "text")
+    .map((block) => String(block.text ?? ""))
+    .join("\n")
+    .trim();
+  return {
+    toolInput: toolUseBlock ? (toolUseBlock as { input?: unknown }).input : undefined,
+    text,
+  };
+}
+
+/** Prefer a tool call; fall back to parsing JSON text (fences stripped). */
+function extractAnthropicJSON<T>(r: { toolInput: unknown; text: string }): T | null {
+  if (r.toolInput && typeof r.toolInput === "object") return r.toolInput as T;
+  const fenced = r.text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  return tryParseJSON<T>((fenced ? fenced[1] : r.text).trim());
 }
 
 function tryParseJSON<T>(text: string): T | null {
