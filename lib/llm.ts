@@ -18,10 +18,11 @@ export type ModelTier = "standard" | "premium";
 
 function resolveModel(provider: Provider, tier: ModelTier): string {
   if (provider === "anthropic") {
-    // Premium default is Sonnet 5.5 (verified present on this key via GET
-    // /v1/models). Override freely.
+    // Rolled back from Sonnet 5.5: it answered fantasy requests in English
+    // despite language=hinglish (verified live). Back on the dated 4.5 ID
+    // until 5.x language compliance is proven. Override freely.
     return tier === "premium"
-      ? process.env.ANTHROPIC_PREMIUM_MODEL || "claude-sonnet-5-5"
+      ? process.env.ANTHROPIC_PREMIUM_MODEL || "claude-sonnet-4-5-20250929"
       : process.env.ANTHROPIC_MODEL || "claude-haiku-4-5";
   }
   return tier === "premium"
