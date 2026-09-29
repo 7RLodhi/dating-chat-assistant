@@ -228,10 +228,17 @@ async function callAnthropicForJSON<T>(params: {
   // not supported for the model), so all Anthropic calls use "auto" and
   // fall back to parsing JSON text — the same shape the OpenAI path
   // already relies on. If neither yields valid JSON, one corrective retry.
+  // The 5.x family deprecated `temperature` (400 if sent) — omit it there,
+  // keep it everywhere else. Major version is parsed from the model ID
+  // (claude-<family>-<major>…); unparseable IDs assume support.
+  const majorVersion = (() => {
+    const m = model.match(/claude-[a-z]+-(\d+)/i);
+    return m ? parseInt(m[1], 10) : null;
+  })();
   const body: Record<string, unknown> = {
     model,
     max_tokens: maxTokens,
-    temperature,
+    ...(majorVersion === null || majorVersion < 5 ? { temperature } : {}),
     system: systemPrompt,
     messages: [{ role: "user", content: userPrompt }],
     tools: [
