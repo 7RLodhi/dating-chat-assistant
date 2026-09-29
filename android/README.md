@@ -158,6 +158,11 @@ app to go back to tap-to-copy. Safeguards, all deliberate:
 - **Per-app switches:** the app's Apps section enables/disables each dating
   app individually (default all on). Unchecked apps get no bubble, no
   capture, no paste, and no panel — instantly, no restart.
+- **Bubble-visible ⟺ snapshot-exists:** the conversation verdict flips true
+  only when a snapshot is actually stored, so a dropped frame (contaminated,
+  list-screen, crash) can never again strand a visible bubble over a dead
+  panel. Parse crashes are counted in the capture log ("exception") instead
+  of swallowed silently.
 - **Tap-to-flip attribution:** tapping a chat row in the panel reassigns it
   to the other side, stores the correction positionally (survives
   re-captures), and regenerates suggestions from the corrected text.

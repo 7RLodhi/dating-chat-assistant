@@ -93,9 +93,12 @@ object ChatBus {
     /**
      * Whether the current window is an actual chat conversation (chat input
      * on screen, not a list/feed/status screen). The bubble — and therefore
-     * the panel — exists ONLY here. Updated by the reader on every capture
-     * attempt; kept across hash-skips (no text change means no screen
-     * change).
+     * the panel — exists ONLY here. Set true only when a snapshot is
+     * actually stored (normal or empty-titled publishes); cleared on real
+     * leaves and non-conversation screens. In particular it is NOT set
+     * before the contamination/list gates — a dropped frame must never
+     * produce a visible bubble over a dead panel. Kept across hash-skips
+     * (no text change means no screen change).
      */
     @Volatile
     var inConversation: Boolean = false

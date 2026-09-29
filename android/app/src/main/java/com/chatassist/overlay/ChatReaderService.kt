@@ -259,10 +259,13 @@ class ChatReaderService : AccessibilityService() {
             // Only real conversation screens: a chat input must be on screen
             // (kills chat-lists, Status/Calls tabs, feeds, contact info…),
             // and list-screen markers are double-checked after parsing.
-            // The verdict also drives bubble visibility (conversation-only).
-            val conversation = parser.hasChatInput(root)
-            ChatBus.inConversation = conversation
-            if (!conversation) {
+            // The verdict also drives bubble visibility (conversation-only),
+            // so it is set true ONLY where a snapshot is actually stored
+            // below — setting it here, before the contamination/list gates,
+            // produced visible bubbles over dead panels (flag true, no
+            // snapshot) whenever a frame was dropped after this point.
+            if (!parser.hasChatInput(root)) {
+                ChatBus.inConversation = false
                 ChatBus.noteCaptureSkip("no-input")
                 return false
             }
@@ -290,6 +293,10 @@ class ChatReaderService : AccessibilityService() {
                 return false
             }
             val key = if (title != null) "$pkg|$title" else pkg
+            // Bubble-visible ⟺ snapshot-exists: only a stored snapshot may
+            // claim the conversation (covers normal and empty-titled
+            // publishes alike). Dropped frames leave the old verdict alone.
+            ChatBus.inConversation = true
             ChatBus.publish(
                 key,
                 ChatBus.ChatSnapshot(
@@ -302,6 +309,9 @@ class ChatReaderService : AccessibilityService() {
             return true
         } catch (_: Exception) {
             // A dating-app UI update must never crash the service.
+            // Counted (not just swallowed) so a crashing parse shows up in
+            // the capture log instead of masquerading as "no chat".
+            ChatBus.noteCaptureSkip("exception")
             // Next event will retry automatically.
         }
         return false
