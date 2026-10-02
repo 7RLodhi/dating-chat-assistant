@@ -267,7 +267,15 @@ object ApiClient {
                 (if (role.isNotEmpty()) role else "Working professional") +
                     (if (s("jobLocation").isNotEmpty()) " (${s("jobLocation")})" else "")
             }
-            else -> ""
+            else -> {
+                // The model sometimes returns a job without classifying it
+                // (occupationType blank): still show what it found rather
+                // than a blank Occupation row.
+                listOf(
+                    s("jobRole"),
+                    if (s("company").isNotEmpty()) "at ${s("company")}" else "",
+                ).filter { it.isNotEmpty() }.joinToString(" ")
+            }
         }
     }
 

@@ -158,6 +158,7 @@ class OverlayService : Service() {
             } else {
                 loadSuggestions()
             }
+            maybeAutoLearn()
         }
     }
 
@@ -623,6 +624,27 @@ class OverlayService : Service() {
         // until the panel closes.
         syncBubbleVisibility("panel opened")
         loadSuggestions()
+        maybeAutoLearn()
+    }
+
+    /** Chats already auto-learned once this service life (no repeat attempts). */
+    private val autoLearned = mutableSetOf<String>()
+
+    /**
+     * First-time learning: a chat with no summary at all learns itself once
+     * the match has said something — otherwise a brand-new chat stays blank
+     * until someone remembers to tap Learn. Strictly one attempt per chat
+     * per service life and only while NO summary exists: once learned, the
+     * summary is frozen (scrolling, Refresh and reopening never refetch it;
+     * only the Learn button does).
+     */
+    private fun maybeAutoLearn() {
+        val key = ChatBus.latestKey
+        val snapshot = ChatBus.get(key) ?: return
+        if (!snapshot.factsJson.isNullOrBlank()) return
+        if (!hasMatchContent(snapshot.text)) return
+        if (!autoLearned.add(key)) return
+        loadFacts()
     }
 
     /**
@@ -879,12 +901,12 @@ class OverlayService : Service() {
         val snapshot = ChatBus.get(ChatBus.latestKey)
         val raw = snapshot?.factsJson
         if (raw.isNullOrBlank()) {
-            rows.addView(hintView("Tap 📋 Summary to load what the AI has learned about this match."))
+            rows.addView(hintView("No summary yet — it learns automatically once they've written something, or tap Learn."))
             return
         }
         val sheet = runCatching { ApiClient.buildFactSheet(JSONObject(raw)) }.getOrNull()
         if (sheet == null) {
-            rows.addView(hintView("Saved summary looks corrupt — tap 📋 Summary to reload."))
+            rows.addView(hintView("Saved summary looks corrupt — tap Learn to rebuild it."))
             return
         }
         renderFactSheet(rows, sheet, snapshot?.userNote.orEmpty())
@@ -978,7 +1000,7 @@ class OverlayService : Service() {
                 onFailure = { e ->
                     if (ChatBus.latestKey == key) {
                         rows.removeAllViews()
-                        rows.addView(hintView(friendlyLoadError(e, "summary") + " — tap 📋 Summary to retry."))
+                        rows.addView(hintView(friendlyLoadError(e, "summary") + " — tap Learn to retry."))
                     }
                 },
             )

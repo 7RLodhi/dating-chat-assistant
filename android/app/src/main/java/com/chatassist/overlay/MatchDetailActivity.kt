@@ -64,6 +64,26 @@ class MatchDetailActivity : AppCompatActivity() {
         }
         renderAll()
         ChatBus.setOwnAppForeground(true)
+        autoLearnFirstTime()
+    }
+
+    private var autoLearnTried = false
+
+    /**
+     * Opening a match that has never been learned fetches its summary once
+     * (the match must have said something). An existing summary is never
+     * touched — it stays frozen until you tap Load summary / Learn.
+     */
+    private fun autoLearnFirstTime() {
+        if (autoLearnTried) return
+        autoLearnTried = true
+        val s = ChatBus.get(key) ?: return
+        if (!s.factsJson.isNullOrBlank()) return
+        val matchSaid = s.text.lineSequence().any { line ->
+            line.trimStart().startsWith("[MATCH]", ignoreCase = true) &&
+                line.substringAfter("]:", "").isNotBlank()
+        }
+        if (matchSaid) loadSummary()
     }
 
     override fun onPause() {

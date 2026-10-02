@@ -171,9 +171,12 @@ app to go back to tap-to-copy. Safeguards, all deliberate:
   list-screen, crash) can never again strand a visible bubble over a dead
   panel. Parse crashes are counted in the capture log ("exception") instead
   of swallowed silently.
-- **Summary learns only on tap:** scrolling, expanding, and Refresh never
-  touch the learned summary — only the panel's Learn button (and the
-  detail screens' Load buttons) fetch facts, so a settled summary stays put.
+- **Summary learns only on tap, plus once automatically:** a chat with no
+  summary at all learns itself once the match has written something (panel
+  open or detail screen open) — otherwise brand-new chats stay blank. After
+  that the summary is frozen: scrolling, expanding, Refresh and reopening
+  never touch it; only the Learn / Load summary buttons re-learn (merging new
+  details into the existing sheet, never replacing it).
 - **My chat style:** the app's style section analyzes pasted samples (or
   harvests your own captured lines) via /api/style, sends the voice with
   every generation, re-learns on demand, and imports/exports the profile as
