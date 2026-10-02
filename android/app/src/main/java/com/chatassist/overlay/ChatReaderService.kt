@@ -295,6 +295,14 @@ class ChatReaderService : AccessibilityService() {
             // Only a title-less empty read means nothing at all.
             val title = parser.extractTitle(root)
                 ?.replace("|", " ")?.trim()?.take(40)?.takeIf { it.isNotBlank() }
+            // Apps that need a contact name (Snapchat) never file a chat
+            // under the bare package: a nameless frame — call screen, banner,
+            // mid-transition — is dropped, and the next readable frame
+            // publishes under the real name.
+            if (title == null && parser.requiresTitle) {
+                ChatBus.noteCaptureSkip("no-title")
+                return false
+            }
             if (text.isBlank() && title == null) {
                 ChatBus.noteCaptureSkip("empty-titleless")
                 return false

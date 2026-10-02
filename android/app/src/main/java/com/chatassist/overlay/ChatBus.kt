@@ -446,7 +446,13 @@ object ChatBus {
             snapshots.putAll(merged)
             val junk = snapshots.filter { (_, s) ->
                 runCatching {
-                    ChatParser.forPackage(s.appPackage).isListScreen(s.title, s.text)
+                    val p = ChatParser.forPackage(s.appPackage)
+                    // List/feed captures, junk titles saved before title
+                    // validation existed (call banners, timers, app names,
+                    // emoji), and nameless rows for apps that need a name.
+                    p.isListScreen(s.title, s.text) ||
+                        (s.title != null && !p.isPlausibleTitle(s.title)) ||
+                        (s.title == null && p.requiresTitle)
                 }.getOrDefault(false)
             }.keys
             if (junk.isNotEmpty()) {

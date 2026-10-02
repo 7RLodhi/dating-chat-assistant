@@ -114,10 +114,41 @@ open class ChatParser(val appPackage: String) {
     }
 
     /**
-     * Best-effort chat title: the topmost short, non-chrome text in the top
-     * 15% of the screen (usually the contact's display name in the app bar).
-     * Null when nothing qualifies — callers must fall back to the package
-     * key rather than guessing. Typing/presence lines are already chrome, so
+     * True when this text could plausibly be a person's display name. Title
+     * extraction guesses "topmost short text near the top", which during
+     * calls is a banner, not a name — so non-names must be rejected here:
+     * timers/clock times ("1:03:07 video call"), questions/exclamations
+     * ("How was your call quality?"), sentences (6+ words), emoji-only
+     * text, the app's own name ("Snapchat"), and call/status phrases
+     * ("Video call", "This video is no longer available").
+     */
+    open fun isPlausibleTitle(text: String): Boolean {
+        val t = text.trim()
+        if (t.isEmpty() || t.length > 40) return false
+        if (t.none { it.isLetter() }) return false
+        if (Regex("""\d{1,2}:\d{2}""").containsMatchIn(t)) return false
+        if (t.endsWith("?") || t.endsWith("!")) return false
+        if (t.split(Regex("\\s+")).size >= 6) return false
+        val lower = t.lowercase()
+        if (NON_NAME_TITLES.contains(lower)) return false
+        if (NON_NAME_PHRASES.any { lower.contains(it) }) return false
+        return true
+    }
+
+    /**
+     * Apps where a chat is meaningless without a real contact name: a
+     * nameless capture would otherwise be filed under the bare package key,
+     * merging unrelated chats into one junk row. Such captures are skipped
+     * instead (the next event, once the header is readable, publishes).
+     */
+    open val requiresTitle: Boolean = false
+
+    /**
+     * Best-effort chat title: the topmost short, plausible-name, non-chrome
+     * text in the top 15% of the screen (usually the contact's display name
+     * in the app bar). Null when nothing qualifies — callers must fall back
+     * to the package key rather than guessing (or skip, for
+     * [requiresTitle] apps). Typing/presence lines are already chrome, so
      * a "typing…" header never becomes a title.
      */
     open fun extractTitle(root: AccessibilityNodeInfo?): String? {
@@ -130,7 +161,9 @@ open class ChatParser(val appPackage: String) {
         var bestTop = Int.MAX_VALUE
         fun walk(node: AccessibilityNodeInfo) {
             val text = node.text?.toString()?.trim().orEmpty()
-            if (text.isNotEmpty() && node.childCount == 0 && text.length <= 60 && !isChrome(text)) {
+            if (text.isNotEmpty() && node.childCount == 0 && text.length <= 60 &&
+                !isChrome(text) && isPlausibleTitle(text)
+            ) {
                 val bounds = Rect()
                 node.getBoundsInScreen(bounds)
                 if (bounds.top in 0..cutoff && bounds.top < bestTop) {
@@ -212,6 +245,21 @@ open class ChatParser(val appPackage: String) {
             "Chat", "Discover", "Stories", "Spotlight", "Search", "Settings",
             "Camera", "Archived", "New Chat", "New Snap",
         )
+
+        /** Exact (lowercased) texts that are app/UI names, never a person. */
+        private val NON_NAME_TITLES = setOf(
+            "snapchat", "whatsapp", "instagram", "tinder", "hinge", "bumble",
+            "chat", "chats", "camera", "calls", "video call", "voice call",
+            "call", "calling", "messages", "message", "online", "offline",
+        )
+
+        /** Fragments (lowercased) that mark call banners / status lines. */
+        private val NON_NAME_PHRASES = listOf(
+            "video call", "voice call", "call quality", "no longer available",
+            "is calling", "calling…", "calling...", "ringing", "connecting",
+            "reconnecting", "call ended", "missed call", "on a call", "tap to",
+            "swipe", "unavailable", "loading", "typing",
+        )
     }
 }
 
@@ -254,6 +302,55 @@ class SnapchatParser : ChatParser("com.snapchat.android") {
         // "Let X know when you arrive safely" nudge only exists on the feed.
         if (text.contains("arrive safely", ignoreCase = true)) return true
         return super.isListScreen(title, text)
+    }
+
+    // A Snapchat chat with no readable contact name is never filed under the
+    // bare package ("Snapchat" row) — skipped until the header is readable.
+    override val requiresTitle: Boolean = true
+
+    private val senderLabel = Regex("""^[A-Z][A-Z .'’-]*[A-Z.]$""")
+
+    /**
+     * The contact name, from the most trustworthy source available.
+     * 1. A plausible header candidate that Snapchat ALSO repeats as a sender
+     *    label inside the chat (all-caps above their messages) — the header
+     *    and the label agreeing is near-proof it's the contact, and it
+     *    beats call banners / timers / reactions sitting in the same spot.
+     * 2. Otherwise the topmost-leftmost plausible header candidate.
+     * 3. Otherwise the sender label itself, title-cased — during video calls
+     *    the header region holds only call chrome, but the chat below still
+     *    labels their messages with their name.
+     * Null when none exist (caller skips the capture).
+     */
+    override fun extractTitle(root: AccessibilityNodeInfo?): String? {
+        if (root == null) return null
+        val screen = Rect()
+        root.getBoundsInScreen(screen)
+        if (screen.height() <= 0) return null
+        val cutoff = (screen.height() * 0.25).toInt()
+        val leaves = collectRawLeaves(root)
+
+        val candidates = leaves
+            .filter {
+                it.top in 0..cutoff && it.text.length <= 60 &&
+                    !isChrome(it.text) && isPlausibleTitle(it.text)
+            }
+            .sortedWith(compareBy({ it.top }, { it.centerX }))
+        val labelled = candidates.firstOrNull { c ->
+            leaves.any { it.top > cutoff && it.text.equals(c.text, ignoreCase = true) }
+        }
+        (labelled ?: candidates.firstOrNull())?.let { return it.text }
+
+        val label = leaves.asSequence()
+            .filter { it.top > cutoff }
+            .map { it.text.trim() }
+            .firstOrNull {
+                it != "ME" && it.length in 3..40 && senderLabel.matches(it) &&
+                    !isChrome(it) && isPlausibleTitle(it)
+            } ?: return null
+        return label.lowercase().split(' ').joinToString(" ") { w ->
+            w.replaceFirstChar { c -> c.uppercase() }
+        }
     }
 
     override val skipTextSubstrings = super.skipTextSubstrings + listOf(

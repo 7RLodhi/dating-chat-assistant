@@ -153,6 +153,13 @@ app to go back to tap-to-copy. Safeguards, all deliberate:
   chat input — chat lists, Status/Calls tabs, feeds and contact-info screens
   are ignored (plus per-app list markers as backup). Same rule purges junk
   rows saved by older builds on startup.
+- **Titles must look like names:** a chat title that is a timer, banner,
+  question, sentence, emoji-only text or an app name ("1:03:07 video call",
+  "This video is no longer available", "Snapchat") is rejected. Snapchat
+  prefers a header that its own sender labels confirm, and falls back to the
+  sender label during calls; nameless Snapchat frames are skipped, never
+  filed under the bare app name. Junk rows saved by older builds are purged
+  on the next launch.
 - **One row per chat:** keys merge case-insensitively, so "NIDHIII…" /
   "Nidhiii…" can never list twice; matches keep hand-added notes and learned
   summaries across re-captures.
