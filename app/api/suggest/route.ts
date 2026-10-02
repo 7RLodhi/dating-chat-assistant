@@ -13,6 +13,7 @@ import {
   buildRegisterCorrection,
   buildReplyUserPrompt,
   buildVerbCorrection,
+  cleanUserName,
   detectHindiRegister,
   violatesGender,
   violatesRegister,
@@ -44,6 +45,7 @@ export async function POST(req: NextRequest) {
   const { mode, tone, goal, extraContext, styleExamples, viaScreenshot, matchName, tasteProfile } = body;
   const userGender =
     body.userGender === "male" || body.userGender === "female" ? body.userGender : undefined;
+  const userName = cleanUserName(body.userName) || undefined;
   const language: Language = body.language ?? "auto";
 
   if (mode !== "reply" && mode !== "opener") {
@@ -129,8 +131,9 @@ export async function POST(req: NextRequest) {
           language,
           tasteProfile,
           userGender,
+          userName,
         })
-      : buildOpenerUserPrompt({ profileText: textField, tone, goal, styleExamples, language, namePunHint, tasteProfile, userGender });
+      : buildOpenerUserPrompt({ profileText: textField, tone, goal, styleExamples, language, namePunHint, tasteProfile, userGender, userName });
 
   try {
     // Timing instrumentation for M-3: healthy requests take 8-12s, but the

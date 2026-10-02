@@ -52,6 +52,8 @@ export interface SuggestRequestBody {
   tasteProfile?: string;
   /** The user's own gender — drives verb agreement in gendered languages. */
   userGender?: UserGender;
+  /** The user's own first name — so replies answer "what's your name?" truthfully. */
+  userName?: string;
 }
 
 export type UserGender = "male" | "female" | "unspecified";

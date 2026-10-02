@@ -64,6 +64,7 @@ object ApiClient {
         tasteProfile: String = "",
         userGender: String = "",
         styleExamples: String = "",
+        userName: String = "",
     ) {
         Thread {
             try {
@@ -78,6 +79,7 @@ object ApiClient {
                     .put("tasteProfile", tasteProfile)
                     .put("userGender", userGender)
                     .put("styleExamples", styleExamples)
+                    .put("userName", userName)
                     .toString()
 
                 val conn = (URL(backendUrl).openConnection() as HttpURLConnection).apply {

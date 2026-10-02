@@ -131,6 +131,23 @@ object Prefs {
             .putStringSet(KEY_ENABLED_APPS, cur).apply()
     }
 
+    // The user's own first name (asked during onboarding, before gender).
+    // Sent with every generation so replies answer "what's your name?"
+    // truthfully instead of inventing one. Blank = not provided.
+    private const val KEY_USER_NAME = "user_name"
+
+    fun userName(ctx: Context): String =
+        ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            .getString(KEY_USER_NAME, "").orEmpty()
+
+    fun setUserName(ctx: Context, name: String) {
+        // Single line, bounded — it is interpolated into prompts server-side
+        // (which sanitizes again), so keep it plainly a name.
+        val clean = name.replace(Regex("""[\r\n"]+"""), " ").replace(Regex("""\s+"""), " ").trim().take(40)
+        ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+            .putString(KEY_USER_NAME, clean).apply()
+    }
+
     // Declared user gender ("male" | "female" | "unspecified"): drives Hindi
     // verb agreement for the user's own lines. Unspecified = old behavior.
     private const val KEY_USER_GENDER = "user_gender"

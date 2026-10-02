@@ -146,6 +146,22 @@ export function buildGenderSection(userGender?: string): string {
   return `\n${GENDER_SECTIONS[userGender]}\n`;
 }
 
+/**
+ * The user's own name, if they gave one. Sanitized here (single line, no
+ * quotes, bounded) because it is interpolated into the prompt — callers
+ * pass the raw request value and never need to pre-clean it.
+ */
+export function cleanUserName(raw?: unknown): string {
+  if (typeof raw !== "string") return "";
+  return raw.replace(/["\r\n]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 40);
+}
+
+export function buildUserNameSection(userName?: string): string {
+  const name = cleanUserName(userName);
+  if (!name) return "";
+  return `\nUSER'S NAME: "${name}". This is the user's real first name. If the match asks their name (or it comes up naturally), use exactly this — never invent, translate or swap in a different name, and never use it unprompted in every line.\n`;
+}
+
 // First-person subjects. "hum" is included: lone users text it for "I"
 // ("hum soch rahe" from a man, "hum soch rahi" from a woman).
 const FP_ROMAN = "\\b(me|main|hum)\\b";
@@ -306,8 +322,9 @@ export function buildReplyUserPrompt(params: {
   language?: Language;
   tasteProfile?: string;
   userGender?: string;
+  userName?: string;
 }): string {
-  const { conversationText, tone, goal, extraContext, styleExamples, language = "auto", tasteProfile, userGender } = params;
+  const { conversationText, tone, goal, extraContext, styleExamples, language = "auto", tasteProfile, userGender, userName } = params;
   return `Generate reply suggestions for an ongoing dating app conversation.
 
 CONVERSATION (most recent messages last; [USER] is the person asking for help, [MATCH] is the other person):
@@ -318,7 +335,7 @@ ${buildFactsSection(conversationText)}
 DESIRED TONE: ${tone} — ${TONE_DESCRIPTIONS[tone]}
 GOAL: ${goal} — ${GOAL_DESCRIPTIONS[goal]}
 LANGUAGE: ${language} — ${LANGUAGE_DESCRIPTIONS[language]}
-${buildGenderSection(userGender)}
+${buildGenderSection(userGender)}${buildUserNameSection(userName)}
 ${buildRegisterSection(conversationText, language)}
 ${buildStyleSection(styleExamples)}
 ${buildTasteSection(tasteProfile)}
@@ -368,8 +385,9 @@ export function buildOpenerUserPrompt(params: {
   namePunHint?: string;
   tasteProfile?: string;
   userGender?: string;
+  userName?: string;
 }): string {
-  const { profileText, tone, goal, styleExamples, language = "auto", namePunHint, tasteProfile, userGender } = params;
+  const { profileText, tone, goal, styleExamples, language = "auto", namePunHint, tasteProfile, userGender, userName } = params;
   const openerLanguageNote =
     language === "auto"
       ? `${LANGUAGE_DESCRIPTIONS.auto} There's no conversation yet, so only the profile info below can give a signal (e.g. a bio written in Hindi/Hinglish) — otherwise default to English.`
@@ -394,7 +412,7 @@ ${profileText}
 DESIRED TONE: ${tone} — ${TONE_DESCRIPTIONS[tone]}
 GOAL: ${goal} — ${GOAL_DESCRIPTIONS[goal]}
 LANGUAGE: ${language} — ${openerLanguageNote}
-${buildGenderSection(userGender)}
+${buildGenderSection(userGender)}${buildUserNameSection(userName)}
 ${hinglishFloor}
 ${buildStyleSection(styleExamples)}
 ${buildTasteSection(tasteProfile)}

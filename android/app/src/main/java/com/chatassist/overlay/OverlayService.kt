@@ -102,8 +102,10 @@ class OverlayService : Service() {
      * must not flicker the bubble off and on.
      */
     private val ownAppSyncRunnable = Runnable {
-        if (panel != null && !ChatBus.inConversation && !ChatBus.ownAppForeground) {
-            togglePanel() // left everything with the panel open: collapse
+        // Our own screens never host the panel: if it's open when one comes
+        // forward (or when everything was left behind), collapse it.
+        if (panel != null && (ChatBus.ownAppForeground || !ChatBus.inConversation)) {
+            togglePanel()
         }
         syncBubbleVisibility("own-app")
     }
@@ -141,7 +143,7 @@ class OverlayService : Service() {
                 syncBubbleVisibility("snapshot")
                 return@post
             }
-            if (!ChatBus.inConversation && !ChatBus.ownAppForeground) {
+            if (!ChatBus.inConversation || ChatBus.ownAppForeground) {
                 // Left the conversation with the panel open (same-app
                 // navigation): collapse exactly like leaving the app.
                 togglePanel()
@@ -159,7 +161,14 @@ class OverlayService : Service() {
         }
     }
 
-    /** The bubble lives on conversation screens and in our own app (panel closed). */
+    /**
+     * The bubble lives on conversation screens and in our own app (panel
+     * closed). Inside our own app it is a pure indicator: visible so Start
+     * gives instant proof it worked, but NOT touchable — taps fall through
+     * to our UI, it can't be dragged, and it can't open the panel there.
+     * (Our own screens win even when the conversation verdict is stale-true
+     * from a chat we just left.)
+     */
     private fun syncBubbleVisibility(cause: String) {
         if (panel != null) {
             bubble?.visibility = View.GONE
@@ -168,10 +177,27 @@ class OverlayService : Service() {
         }
         val visible = ChatBus.inConversation || ChatBus.ownAppForeground
         bubble?.visibility = if (visible) View.VISIBLE else View.GONE
+        setBubbleTouchable(ChatBus.inConversation && !ChatBus.ownAppForeground)
         ChatBus.noteBubbleVisibility(
             visible,
             "$cause inConversation=${ChatBus.inConversation} ownApp=${ChatBus.ownAppForeground}",
         )
+    }
+
+    private var bubbleTouchable = true
+
+    /** Toggles FLAG_NOT_TOUCHABLE on the bubble window (no-op when unchanged). */
+    private fun setBubbleTouchable(touchable: Boolean) {
+        val view = bubble ?: return
+        val params = bubbleParams ?: return
+        if (touchable == bubbleTouchable) return
+        bubbleTouchable = touchable
+        params.flags = if (touchable) {
+            params.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
+        } else {
+            params.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+        }
+        runCatching { windowManager.updateViewLayout(view, params) }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -213,6 +239,9 @@ class OverlayService : Service() {
         // otherwise a dead, untappable ghost floats next to the live bubble.
         bubble?.let { runCatching { windowManager.removeView(it) } }
         bubble = null
+        // New window starts touchable (default flags); sync below flips it
+        // if we're inside our own app.
+        bubbleTouchable = true
         val inflater = LayoutInflater.from(this)
         bubble = inflater.inflate(R.layout.overlay_bubble, null)
 
@@ -1009,10 +1038,12 @@ class OverlayService : Service() {
         // chat-style samples: saving a voice must invalidate the cache.
         val genderTag = Prefs.userGender(this).takeIf { it == "male" || it == "female" } ?: ""
         val style = Prefs.chatStyleSamples(this).trim().take(4000)
+        // Name too: entering or changing it must regenerate the batch.
+        val userName = Prefs.userName(this)
         val fingerprint = if (opener) {
-            "v2|$tone|opener|${snapshot.title.orEmpty()}|t${taste.hashCode()}|g$genderTag|s${style.hashCode()}"
+            "v2|$tone|opener|${snapshot.title.orEmpty()}|t${taste.hashCode()}|g$genderTag|s${style.hashCode()}|n${userName.hashCode()}"
         } else {
-            "v2|$tone|reply|$text|t${taste.hashCode()}|g$genderTag|s${style.hashCode()}"
+            "v2|$tone|reply|$text|t${taste.hashCode()}|g$genderTag|s${style.hashCode()}|n${userName.hashCode()}"
         }
         if (!force && snapshot.suggestMode == mode && snapshot.suggestFor == fingerprint &&
             snapshot.suggestItems.isNotEmpty()
@@ -1038,6 +1069,7 @@ class OverlayService : Service() {
                 tasteProfile = taste,
                 userGender = userGender,
                 styleExamples = style,
+                userName = userName,
             )
         } else {
             ApiClient.fetchSuggestions(
@@ -1047,6 +1079,7 @@ class OverlayService : Service() {
                 tasteProfile = taste,
                 userGender = userGender,
                 styleExamples = style,
+                userName = userName,
             )
         }
     }
