@@ -245,7 +245,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:text="Start (re)starts the bubble. It appears only on chat screens — open Snapchat or WhatsApp after starting."
+            android:text="Start (re)starts the bubble. It shows in this app and on chat screens — in chats it needs steps 1 and 2 above."
             android:textColor="#6B7280"
             android:textSize="13sp" />
 

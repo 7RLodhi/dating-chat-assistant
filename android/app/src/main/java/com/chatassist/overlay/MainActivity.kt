@@ -217,17 +217,31 @@ class MainActivity : AppCompatActivity() {
             }
         }
         btnStart.setOnClickListener {
+            // Always tappable — but starting without the overlay permission
+            // can't work, so send the user to grant it instead of failing
+            // silently. Accessibility is NOT required to start: the bubble
+            // then shows in this app right away, and in chats once
+            // screen-reading is enabled.
+            if (!Settings.canDrawOverlays(this)) {
+                toast("Grant “Display over other apps” first (step 1).")
+                startActivity(
+                    Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))
+                )
+                return@setOnClickListener
+            }
             requestNotificationPermissionIfNeeded()
-            // Restart (not just start) so bubble appearance edits below
+            // Restart (not just start) so bubble appearance edits above
             // always take effect on the running bubble.
             stopService(Intent(this, OverlayService::class.java))
             startForegroundServiceCompat()
             updateStartButton()
-            // The bubble lives only on chat screens, never here — say so,
-            // or Start looks dead when it actually worked.
             android.widget.Toast.makeText(
                 this,
-                "Bubble running — open a chat in Snapchat/WhatsApp to see it",
+                if (isAccessibilityEnabled()) {
+                    "Bubble running — it shows here and on chat screens"
+                } else {
+                    "Bubble running here. Enable screen reading (step 2) so it also appears inside chats"
+                },
                 android.widget.Toast.LENGTH_LONG,
             ).show()
         }
@@ -254,14 +268,13 @@ class MainActivity : AppCompatActivity() {
         updateStartButton()
         ChatBus.loadFromPrefs()
         renderMatchList()
-        // Keep the bubble out of our own UI (the overlay ignores our package
-        // by design, so activities announce themselves explicitly).
-        if (OverlayService.isRunning(this)) {
-            startService(
-                android.content.Intent(this, OverlayService::class.java)
-                    .setAction(OverlayService.ACTION_HIDE_BUBBLE)
-            )
-        }
+        // The bubble shows in our own app too while the service runs.
+        ChatBus.setOwnAppForeground(true)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        ChatBus.setOwnAppForeground(false)
     }
 
     /**

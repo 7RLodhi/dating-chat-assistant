@@ -28,12 +28,12 @@ class CaptureLogActivity : AppCompatActivity() {
         super.onResume()
         ChatBus.loadFromPrefs()
         render()
-        if (OverlayService.isRunning(this)) {
-            startService(
-                android.content.Intent(this, OverlayService::class.java)
-                    .setAction(OverlayService.ACTION_HIDE_BUBBLE)
-            )
-        }
+        ChatBus.setOwnAppForeground(true)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        ChatBus.setOwnAppForeground(false)
     }
 
     private fun render() {

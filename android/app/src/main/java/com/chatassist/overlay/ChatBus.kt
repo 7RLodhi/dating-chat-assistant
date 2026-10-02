@@ -104,6 +104,31 @@ object ChatBus {
     var inConversation: Boolean = false
 
     /**
+     * True while one of OUR activities is on screen (set from onResume /
+     * onPause). The bubble shows there too — when the service is running —
+     * so Start gives immediate visible proof it worked, and the panel can be
+     * opened on the latest captured chat without leaving the app.
+     */
+    @Volatile
+    var ownAppForeground: Boolean = false
+        private set
+
+    private val ownAppListeners = CopyOnWriteArrayList<() -> Unit>()
+
+    fun setOwnAppForeground(foreground: Boolean) {
+        ownAppForeground = foreground
+        for (listener in ownAppListeners) runCatching { listener() }
+    }
+
+    fun addOwnAppListener(listener: () -> Unit) {
+        ownAppListeners.add(listener)
+    }
+
+    fun removeOwnAppListener(listener: () -> Unit) {
+        ownAppListeners.remove(listener)
+    }
+
+    /**
      * Package of the current foreground window, updated on every window
      * state change — including unsupported apps and the launcher. Only the
      * package name is observed here, never any content.

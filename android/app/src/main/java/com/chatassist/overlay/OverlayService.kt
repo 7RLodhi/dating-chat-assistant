@@ -40,16 +40,8 @@ class OverlayService : Service() {
 
     companion object {
         const val ACTION_START = "com.chatassist.overlay.START"
-        const val ACTION_HIDE_BUBBLE = "com.chatassist.overlay.HIDE_BUBBLE"
         private const val NOTIF_ID = 1
         private const val CHANNEL_ID = "bubble"
-
-        /** True when the overlay service is currently alive. */
-        fun isRunning(ctx: android.content.Context): Boolean {
-            val manager = ctx.getSystemService(android.content.Context.ACTIVITY_SERVICE) as android.app.ActivityManager
-            return manager.getRunningServices(Int.MAX_VALUE)
-                .any { it.service.className == OverlayService::class.java.name }
-        }
     }
 
     private lateinit var windowManager: WindowManager
@@ -69,11 +61,13 @@ class OverlayService : Service() {
     private val mainHandler = Handler(Looper.getMainLooper())
 
     /**
-     * The bubble (and panel) exist only on conversation screens — not app
-     * homepages, lists, or feeds. Package switches between apps still drive
-     * show/hide through the visibility sync below; in-app navigation
-     * (chat ↔ feed, same package, no package event) is picked up through
-     * the snapshot listener instead, using the reader's chat-input verdict.
+     * The bubble (and panel) exist on conversation screens and inside our
+     * own app — not on app homepages, lists, feeds, or elsewhere. Package
+     * switches between apps still drive show/hide through the visibility
+     * sync below; in-app navigation (chat ↔ feed, same package, no package
+     * event) is picked up through the snapshot listener instead, using the
+     * reader's chat-input verdict; our own screens announce themselves via
+     * [ChatBus.setOwnAppForeground].
      *
      * Exempt (never react): overlay-context packages — our own windows,
      * keyboards, systemui noise (shared definition at
@@ -95,11 +89,28 @@ class OverlayService : Service() {
             // only then collapse + hide. A real switch-away still shows a
             // gone window by then; a return in between cancels the hide.
             mainHandler.postDelayed({
-                if (ChatBus.supportedVisible) return@postDelayed
+                if (ChatBus.supportedVisible || ChatBus.ownAppForeground) return@postDelayed
                 if (panel != null) togglePanel()
                 syncBubbleVisibility("verified-gone")
             }, 500)
         }
+    }
+
+    /**
+     * Our own activities coming/going re-sync the bubble. Debounced: moving
+     * between our own screens fires onPause + onResume back to back, which
+     * must not flicker the bubble off and on.
+     */
+    private val ownAppSyncRunnable = Runnable {
+        if (panel != null && !ChatBus.inConversation && !ChatBus.ownAppForeground) {
+            togglePanel() // left everything with the panel open: collapse
+        }
+        syncBubbleVisibility("own-app")
+    }
+
+    private val ownAppListener: () -> Unit = {
+        mainHandler.removeCallbacks(ownAppSyncRunnable)
+        mainHandler.postDelayed(ownAppSyncRunnable, 250)
     }
 
     override fun onCreate() {
@@ -107,6 +118,7 @@ class OverlayService : Service() {
         ChatBus.setAppContext(this)
         ChatBus.addForegroundListener(foregroundListener)
         ChatBus.addSnapshotListener(snapshotListener)
+        ChatBus.addOwnAppListener(ownAppListener)
     }
 
     /**
@@ -129,7 +141,7 @@ class OverlayService : Service() {
                 syncBubbleVisibility("snapshot")
                 return@post
             }
-            if (!ChatBus.inConversation) {
+            if (!ChatBus.inConversation && !ChatBus.ownAppForeground) {
                 // Left the conversation with the panel open (same-app
                 // navigation): collapse exactly like leaving the app.
                 togglePanel()
@@ -147,34 +159,26 @@ class OverlayService : Service() {
         }
     }
 
-    /** The bubble lives only on conversation screens (panel closed). */
+    /** The bubble lives on conversation screens and in our own app (panel closed). */
     private fun syncBubbleVisibility(cause: String) {
         if (panel != null) {
             bubble?.visibility = View.GONE
             ChatBus.noteBubbleVisibility(false, "$cause + panel open")
             return
         }
-        val visible = ChatBus.inConversation
+        val visible = ChatBus.inConversation || ChatBus.ownAppForeground
         bubble?.visibility = if (visible) View.VISIBLE else View.GONE
-        ChatBus.noteBubbleVisibility(visible, "$cause inConversation=${ChatBus.inConversation}")
+        ChatBus.noteBubbleVisibility(
+            visible,
+            "$cause inConversation=${ChatBus.inConversation} ownApp=${ChatBus.ownAppForeground}",
+        )
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        // Our own activities send this when they come forward so the bubble
-        // never floats over our own UI (the foreground listener ignores our
-        // package on purpose — panel/trash windows must not trigger it).
-        if (intent?.action == ACTION_HIDE_BUBBLE) {
-            ChatBus.inConversation = false
-            mainHandler.post {
-                if (panel == null) {
-                    bubble?.visibility = View.GONE
-                    ChatBus.noteBubbleVisibility(false, "own activity open")
-                }
-            }
-            return START_STICKY
-        }
         // Fresh start: never trust a stale verdict from a previous life in
-        // this process — the capture below re-derives it immediately.
+        // this process — the capture below re-derives it immediately. (Our
+        // own activities need no intent plumbing: they flip
+        // ChatBus.ownAppForeground and the listener above re-syncs.)
         ChatBus.inConversation = false
         startForeground(NOTIF_ID, buildNotification())
         if (bubble == null) showBubble()
@@ -276,9 +280,18 @@ class OverlayService : Service() {
             }
         }
         applyBubbleAppearance()
-        windowManager.addView(bubble, bubbleParams)
-        // Start hidden unless a supported app is already in front — the
-        // foreground listener takes over from here.
+        // Without the overlay permission addView throws and would crash the
+        // service (and the whole app with it). Fail soft instead: stop, and
+        // the app screen explains what's missing.
+        try {
+            windowManager.addView(bubble, bubbleParams)
+        } catch (e: Exception) {
+            bubble = null
+            stopSelf()
+            return
+        }
+        // Visible in our own app and on conversation screens; the
+        // foreground/own-app listeners take over from here.
         syncBubbleVisibility("bubble-created")
     }
 
@@ -544,7 +557,7 @@ class OverlayService : Service() {
         // tell us which release produced them.
         panelView.findViewById<TextView>(R.id.versionText).text = "v${appVersionName()}"
         setupCloseButton(panelView, panelParams!!)
-        panelView.findViewById<Button>(R.id.btnRefresh).setOnClickListener {
+        panelView.findViewById<View>(R.id.btnRefresh).setOnClickListener {
             // Re-capture first: if the reader missed this chat (debounced
             // switch, settled screen), Refresh heals it instead of
             // re-showing the previous match's data. Forced: manual Refresh
@@ -1173,6 +1186,8 @@ class OverlayService : Service() {
     override fun onDestroy() {
         ChatBus.removeForegroundListener(foregroundListener)
         ChatBus.removeSnapshotListener(snapshotListener)
+        ChatBus.removeOwnAppListener(ownAppListener)
+        mainHandler.removeCallbacks(ownAppSyncRunnable)
         hideTrash()
         bubble?.let { runCatching { windowManager.removeView(it) } }
         panel?.let { runCatching { windowManager.removeView(it) } }
