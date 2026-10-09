@@ -158,7 +158,9 @@ class OverlayService : Service() {
             } else {
                 loadSuggestions()
             }
-            maybeAutoLearn()
+            // Facts don't learn on switch (bubble only) — just show this
+            // chat's stored summary, if it has one.
+            renderStoredSummary(panel!!)
         }
     }
 
@@ -624,26 +626,19 @@ class OverlayService : Service() {
         // until the panel closes.
         syncBubbleVisibility("panel opened")
         loadSuggestions()
-        maybeAutoLearn()
+        refreshFactsOnOpen()
     }
 
-    /** Chats already auto-learned once this service life (no repeat attempts). */
-    private val autoLearned = mutableSetOf<String>()
-
     /**
-     * First-time learning: a chat with no summary at all learns itself once
-     * the match has said something — otherwise a brand-new chat stays blank
-     * until someone remembers to tap Learn. Strictly one attempt per chat
-     * per service life and only while NO summary exists: once learned, the
-     * summary is frozen (scrolling, Refresh and reopening never refetch it;
-     * only the Learn button does).
+     * Learning is tied to opening the panel from the bubble: a match that has
+     * said something gets its summary created, or updated with whatever is
+     * new since the last learn. Reopening an unchanged chat costs no request
+     * (loadFacts reuses the stored sheet). Scrolling, Refresh and chat
+     * switches never learn; the Learn button stays as an explicit re-learn.
      */
-    private fun maybeAutoLearn() {
-        val key = ChatBus.latestKey
-        val snapshot = ChatBus.get(key) ?: return
-        if (!snapshot.factsJson.isNullOrBlank()) return
+    private fun refreshFactsOnOpen() {
+        val snapshot = ChatBus.get(ChatBus.latestKey) ?: return
         if (!hasMatchContent(snapshot.text)) return
-        if (!autoLearned.add(key)) return
         loadFacts()
     }
 
@@ -901,7 +896,7 @@ class OverlayService : Service() {
         val snapshot = ChatBus.get(ChatBus.latestKey)
         val raw = snapshot?.factsJson
         if (raw.isNullOrBlank()) {
-            rows.addView(hintView("No summary yet — it learns automatically once they've written something, or tap Learn."))
+            rows.addView(hintView("No summary yet — it learns when you open the bubble on a chat they've written in, or tap Learn."))
             return
         }
         val sheet = runCatching { ApiClient.buildFactSheet(JSONObject(raw)) }.getOrNull()
@@ -910,6 +905,69 @@ class OverlayService : Service() {
             return
         }
         renderFactSheet(rows, sheet, snapshot?.userNote.orEmpty())
+        showOpeningQuestions(rows, ChatBus.latestKey, raw)
+    }
+
+    /** Opening questions per learned sheet + tone; session-only, so restarts re-ask once. */
+    private val questionCache = HashMap<String, List<String>>()
+    private var loadingQuestions = false
+
+    /**
+     * Questions to ask this match, built from the learned sheet (the same
+     * opener generator, fed the sheet as profile). Shown under the summary as
+     * tap-to-paste lines. Fetched once per sheet+tone; a failure just shows
+     * nothing, the summary itself is unaffected.
+     */
+    private fun showOpeningQuestions(rows: LinearLayout, key: String, factsJson: String) {
+        val tone = Prefs.tone(this)
+        val cacheKey = "$key|${factsJson.hashCode()}|$tone"
+        questionCache[cacheKey]?.let { addQuestionRows(rows, it); return }
+        if (loadingQuestions) return
+        val profile = runCatching { ApiClient.factsProfileText(JSONObject(factsJson)) }.getOrNull()
+        if (profile.isNullOrBlank()) return
+        loadingQuestions = true
+        ApiClient.fetchSuggestions(
+            Prefs.backendUrl(this),
+            "", tone,
+            mode = "opener",
+            profileText = profile,
+            matchName = ChatBus.get(key)?.title.orEmpty(),
+            callback = { result ->
+                loadingQuestions = false
+                result.onSuccess { r ->
+                    val lines = r.suggestions.map { it.text }
+                    if (questionCache.size > 40) questionCache.clear()
+                    questionCache[cacheKey] = lines
+                    val pv = panel ?: return@onSuccess
+                    if (ChatBus.latestKey == key) {
+                        addQuestionRows(pv.findViewById(R.id.summaryRows), lines)
+                    }
+                }
+            },
+            tasteProfile = Prefs.tasteProfile(this),
+            userGender = Prefs.userGender(this),
+            styleExamples = Prefs.chatStyleSamples(this).trim().take(4000),
+            userName = Prefs.userName(this),
+        )
+    }
+
+    private fun addQuestionRows(rows: LinearLayout, questions: List<String>) {
+        if (questions.isEmpty()) return
+        rows.addView(TextView(this).apply {
+            text = "Questions to ask"
+            textSize = 11f
+            setPadding(8, 10, 8, 0)
+            setTextColor(getColor(android.R.color.darker_gray))
+        })
+        for (q in questions.take(4)) {
+            rows.addView(TextView(this).apply {
+                text = q
+                textSize = 13f
+                setPadding(8, 6, 8, 6)
+                setTextColor(getColor(android.R.color.black))
+                setOnClickListener { useSuggestionText(q) }
+            })
+        }
     }
 
     private fun renderFactSheet(rows: LinearLayout, sheet: FactSheet, note: String = "") {
@@ -991,10 +1049,9 @@ class OverlayService : Service() {
                 onSuccess = { (json, sheet) ->
                     ChatBus.updateFacts(key, json.toString(), text)
                     if (ChatBus.latestKey == key) {
-                        renderFactSheet(
-                            pv.findViewById(R.id.summaryRows), sheet,
-                            ChatBus.get(key)?.userNote.orEmpty(),
-                        )
+                        val summaryRows = pv.findViewById<LinearLayout>(R.id.summaryRows)
+                        renderFactSheet(summaryRows, sheet, ChatBus.get(key)?.userNote.orEmpty())
+                        showOpeningQuestions(summaryRows, key, json.toString())
                     }
                 },
                 onFailure = { e ->
@@ -1146,6 +1203,23 @@ class OverlayService : Service() {
      * batches. Votes crystallize into LEARNED TASTE (same rules as web) and
      * steer every future generation on this device.
      */
+    /** Tap-to-paste (or copy when auto-paste is off) for any suggestion text. */
+    private fun useSuggestionText(text: String) {
+        if (Prefs.autoPaste(this)) {
+            ChatBus.requestPaste(text) { ok ->
+                if (ok) {
+                    Toast.makeText(this, "Pasted into chat — review and press send", Toast.LENGTH_SHORT).show()
+                } else {
+                    copyToClipboard(text)
+                    Toast.makeText(this, "Couldn't find the chat box — copied instead", Toast.LENGTH_SHORT).show()
+                }
+            }
+        } else {
+            copyToClipboard(text)
+            Toast.makeText(this, "Copied — paste it into your chat", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     private fun renderSuggestionCards(list: LinearLayout, suggestions: List<SuggestionItem>) {
         list.removeAllViews()
         for (item in suggestions.take(5)) {
@@ -1159,29 +1233,7 @@ class OverlayService : Service() {
                             setPadding(20, 16, 20, 16)
                             setTextColor(getColor(android.R.color.black))
                         }
-                        card.setOnClickListener {
-                            if (Prefs.autoPaste(this)) {
-                                ChatBus.requestPaste(item.text) { ok ->
-                                    if (ok) {
-                                        Toast.makeText(
-                                            this,
-                                            "Pasted into chat — review and press send",
-                                            Toast.LENGTH_SHORT,
-                                        ).show()
-                                    } else {
-                                        copyToClipboard(item.text)
-                                        Toast.makeText(
-                                            this,
-                                            "Couldn't find the chat box — copied instead",
-                                            Toast.LENGTH_SHORT,
-                                        ).show()
-                                    }
-                                }
-                            } else {
-                                copyToClipboard(item.text)
-                                Toast.makeText(this, "Copied — paste it into your chat", Toast.LENGTH_SHORT).show()
-                            }
-                        }
+                        card.setOnClickListener { useSuggestionText(item.text) }
                         fun voteButton(emoji: String, up: Boolean): Button {
                             return Button(this).apply {
                                 text = emoji

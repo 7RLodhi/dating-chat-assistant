@@ -27,8 +27,6 @@ class MatchDetailActivity : AppCompatActivity() {
     private lateinit var noteEdit: EditText
     private lateinit var chatBox: LinearLayout
 
-    private var loadingFacts = false
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_match_detail)
@@ -45,9 +43,6 @@ class MatchDetailActivity : AppCompatActivity() {
         noteEdit = findViewById(R.id.detailNoteEdit)
         chatBox = findViewById(R.id.detailChat)
 
-        findViewById<Button>(R.id.btnDetailLoadSummary).setOnClickListener {
-            loadSummary()
-        }
         findViewById<Button>(R.id.btnDetailSaveNote).setOnClickListener {
             ChatBus.updateNote(key, noteEdit.text.toString().trim())
             Toast.makeText(this, "Saved — used in future summaries", Toast.LENGTH_SHORT).show()
@@ -64,26 +59,6 @@ class MatchDetailActivity : AppCompatActivity() {
         }
         renderAll()
         ChatBus.setOwnAppForeground(true)
-        autoLearnFirstTime()
-    }
-
-    private var autoLearnTried = false
-
-    /**
-     * Opening a match that has never been learned fetches its summary once
-     * (the match must have said something). An existing summary is never
-     * touched — it stays frozen until you tap Load summary / Learn.
-     */
-    private fun autoLearnFirstTime() {
-        if (autoLearnTried) return
-        autoLearnTried = true
-        val s = ChatBus.get(key) ?: return
-        if (!s.factsJson.isNullOrBlank()) return
-        val matchSaid = s.text.lineSequence().any { line ->
-            line.trimStart().startsWith("[MATCH]", ignoreCase = true) &&
-                line.substringAfter("]:", "").isNotBlank()
-        }
-        if (matchSaid) loadSummary()
     }
 
     override fun onPause() {
@@ -125,12 +100,12 @@ class MatchDetailActivity : AppCompatActivity() {
         }
         val raw = snapshot.factsJson
         if (raw.isNullOrBlank()) {
-            summaryBox.addView(sectionSmall("No summary yet — tap Load summary. Same learned sheet as the overlay panel."))
+            summaryBox.addView(sectionSmall("No summary yet — tap the bubble on this chat to learn it."))
             return
         }
         val sheet = runCatching { ApiClient.buildFactSheet(JSONObject(raw)) }.getOrNull()
         if (sheet == null || (sheet.summary.isBlank() && sheet.rows.isEmpty())) {
-            summaryBox.addView(sectionSmall("Saved summary looks empty — tap Load summary to retry."))
+            summaryBox.addView(sectionSmall("Saved summary looks empty — tap the bubble on this chat to re-learn it."))
             return
         }
         if (sheet.summary.isNotBlank()) {
@@ -185,43 +160,4 @@ class MatchDetailActivity : AppCompatActivity() {
         }
     }
 
-    /** Same shared snapshot — the panel reads what this stores. */
-    private fun loadSummary() {
-        if (loadingFacts) return
-        val snapshot = ChatBus.get(key)
-        val text = ChatBus.applySpeakerFixes(
-            snapshot?.text.orEmpty(), snapshot?.speakerFixes.orEmpty()
-        )
-        if (text.isBlank()) {
-            summaryBox.removeAllViews()
-            summaryBox.addView(sectionSmall("No chat text to learn from yet."))
-            return
-        }
-        val stored = snapshot?.factsJson
-        if (!stored.isNullOrBlank() && snapshot?.factsText == text) {
-            renderSummary()
-            return
-        }
-        loadingFacts = true
-        summaryBox.removeAllViews()
-        summaryBox.addView(sectionSmall("Learning summary…"))
-        val previous = stored?.let { runCatching { JSONObject(it) }.getOrNull() }
-        ApiClient.fetchFacts(
-            Prefs.backendUrl(this), text, previous,
-            callback = { result ->
-                loadingFacts = false
-                result.fold(
-                    onSuccess = { (json, _) ->
-                        ChatBus.updateFacts(key, json.toString(), text)
-                        if (!isFinishing && !isDestroyed) renderSummary()
-                    },
-                    onFailure = { e ->
-                        summaryBox.removeAllViews()
-                        summaryBox.addView(sectionSmall("Couldn't load summary: ${e.message} — retry with Load summary."))
-                    },
-                )
-            },
-            bio = snapshot?.userNote.orEmpty(),
-        )
-    }
 }

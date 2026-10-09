@@ -297,4 +297,12 @@ object ApiClient {
         add("Other", json.strList("other"))
         return FactSheet(summary = json.str("summary"), rows = rows)
     }
+
+    /** The learned sheet as plain profile text — what opening questions are built from. */
+    fun factsProfileText(json: JSONObject): String {
+        val sheet = buildFactSheet(json)
+        return (listOf(sheet.summary) + sheet.rows.map { "${it.first}: ${it.second}" })
+            .filter { it.isNotBlank() }
+            .joinToString("\n")
+    }
 }
