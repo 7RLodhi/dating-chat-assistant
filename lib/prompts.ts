@@ -40,7 +40,7 @@ export const GOAL_OPTIONS: { value: Goal; label: string }[] = [
 ];
 
 export const LANGUAGE_DESCRIPTIONS: Record<Language, string> = {
-  auto: "Detect the language/script from the MATCH's lines ([MATCH]:) specifically — not the user's — and reply in that same language and script. Romanized Hindi markers in the match's messages (e.g. radhe radhe, namaste, kya, kaise ho, aap, tum, accha, ji) count as Hinglish even when they appear in a single short greeting with nothing else to go on — one such marker is enough signal, do not default to English over it. Only fall back to English when the match's messages are genuinely all-English or there are no match messages at all.",
+  auto: "Detect the language/script from the MATCH's lines ([MATCH]:) specifically — not the user's — and reply in that same language and script. If the match writes in Devanagari script, reply in Devanagari script too — never transliterate Hindi into Roman letters. Romanized Hindi markers in the match's messages (e.g. radhe radhe, namaste, kya, kaise ho, aap, tum, accha, ji) count as Hinglish even when they appear in a single short greeting with nothing else to go on — one such marker is enough signal, do not default to English over it. Only fall back to English when the match's messages are genuinely all-English or there are no match messages at all.",
   english: "Reply in English only.",
   hindi: "Reply in Hindi, written in Devanagari script (e.g. \"अरे वाह, ये तो बहुत बढ़िया है\").",
   hinglish:

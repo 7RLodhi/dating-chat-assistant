@@ -260,7 +260,7 @@ async function callAnthropicForJSON<T>(params: {
       };
   // 5.x runs wordier: give it headroom so a full reply batch isn't cut off
   // mid-JSON (observed stop_reason=max_tokens at 700 on the first attempt).
-  const effectiveMaxTokens = maxTokensParam ?? (modernModel ? 1500 : 700);
+  const effectiveMaxTokens = maxTokensParam ?? (modernModel ? 2500 : 700);
   const body: Record<string, unknown> = {
     model,
     max_tokens: effectiveMaxTokens,
@@ -274,6 +274,9 @@ async function callAnthropicForJSON<T>(params: {
     const first = await requestAnthropic(body, apiKey, controller.signal);
     const parsed = extractAnthropicJSON<T>(first);
     if (parsed) return parsed;
+    if (first.stopReason === "max_tokens") {
+      console.warn(`[llm] ${model} hit max_tokens=${effectiveMaxTokens} before finishing JSON`);
+    }
 
     const retryBody: Record<string, unknown> = {
       ...body,
@@ -308,7 +311,7 @@ async function requestAnthropic(
   body: Record<string, unknown>,
   apiKey: string,
   signal: AbortSignal
-): Promise<{ toolInput: unknown; text: string }> {
+): Promise<{ toolInput: unknown; text: string; stopReason?: string }> {
   const res = await fetch(ANTHROPIC_URL, {
     method: "POST",
     headers: {
@@ -336,6 +339,7 @@ async function requestAnthropic(
   return {
     toolInput: toolUseBlock ? (toolUseBlock as { input?: unknown }).input : undefined,
     text,
+    stopReason: typeof data?.stop_reason === "string" ? data.stop_reason : undefined,
   };
 }
 

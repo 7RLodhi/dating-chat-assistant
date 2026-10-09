@@ -108,7 +108,7 @@ export async function POST(req: NextRequest) {
         userPrompt: buildNamePunPrompt(matchName.trim()),
         schema: NAME_PUN_JSON_SCHEMA,
         temperature: 0.5,
-        maxTokens: 150,
+        maxTokens: 400,
       });
       if (punResult.has_pun && punResult.pun_line?.trim()) {
         namePunHint = punResult.pun_line.trim();
