@@ -68,7 +68,7 @@ See `.env.example`:
 - **LLM provider — set one:**
   - `OPENAI_API_KEY` (+ optional `OPENAI_MODEL`, default `gpt-4o-mini`; optional
     `OPENAI_BASE_URL` to point at an OpenAI-compatible endpoint like OpenRouter), **or**
-  - `ANTHROPIC_API_KEY` (+ optional `ANTHROPIC_MODEL`, default `claude-haiku-4-5`)
+  - `ANTHROPIC_API_KEY` (+ optional `ANTHROPIC_MODEL`, default `claude-haiku-5-5`)
   - Setting only `ANTHROPIC_API_KEY` auto-switches the app to Claude — no other
     config needed. To force a provider explicitly regardless of which keys are
     set, use `LLM_PROVIDER=openai` or `LLM_PROVIDER=anthropic`. See

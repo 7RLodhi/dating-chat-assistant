@@ -23,7 +23,7 @@ function resolveModel(provider: Provider, tier: ModelTier): string {
     // until 5.x language compliance is proven. Override freely.
     return tier === "premium"
       ? process.env.ANTHROPIC_PREMIUM_MODEL || "claude-sonnet-4-5-20250929"
-      : process.env.ANTHROPIC_MODEL || "claude-haiku-4-5";
+      : process.env.ANTHROPIC_MODEL || "claude-haiku-5-5";
   }
   return tier === "premium"
     ? process.env.OPENAI_PREMIUM_MODEL || "gpt-4o"
@@ -220,9 +220,12 @@ async function callAnthropicForJSON<T>(params: {
   const { systemPrompt, userPrompt, schema, temperature = 0.9, maxTokens: maxTokensParam } = params;
 
   const controller = new AbortController();
+  // Standard was 15s: Haiku 5.5 routinely needs 15-20s for a full batch, so
+  // it hit the cap on ~1 in 4 requests. 30s keeps a hard ceiling under the
+  // route's 60s maxDuration even with one corrective retry.
   const timeout = setTimeout(
     () => controller.abort(),
-    (params.tier ?? "standard") === "premium" ? 50000 : 15000
+    (params.tier ?? "standard") === "premium" ? 50000 : 30000
   );
 
   // The 5.x family rejects forced tool choice (400: tool_choice "tool"/"any"
@@ -459,7 +462,7 @@ async function transcribeWithAnthropic(
   if (!apiKey) {
     throw new LLMError("ANTHROPIC_API_KEY is not set. Add it to .env.local to use screenshot upload.");
   }
-  const model = process.env.ANTHROPIC_MODEL || "claude-haiku-4-5";
+  const model = process.env.ANTHROPIC_MODEL || "claude-haiku-5-5";
   const { imageBase64, mimeType } = params;
 
   const controller = new AbortController();
