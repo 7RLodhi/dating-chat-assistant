@@ -52,7 +52,43 @@ class MainActivity : AppCompatActivity() {
     private lateinit var styleStatus: TextView
     private lateinit var styleUpdatedAt: TextView
     private lateinit var styleSamplesEdit: EditText
+    private lateinit var styleExampleEdit: EditText
+    private lateinit var styleMessagesBox: LinearLayout
+    private lateinit var styleMessagesList: LinearLayout
+    private lateinit var btnStyleMessages: Button
     private var analyzingStyle = false
+    private var exportPayload = ""
+
+    /** Saves the style export as a file the user picks (Downloads, Drive, …). */
+    private val exportStyleFile = registerForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri == null) return@registerForActivityResult
+        runCatching {
+            contentResolver.openOutputStream(uri)?.use { it.write(exportPayload.toByteArray(Charsets.UTF_8)) }
+        }.onSuccess { toast("Style saved to file.") }
+            .onFailure { toast("Couldn't write the file: ${it.message}") }
+    }
+
+    /** Reads a style export file back in. */
+    private val importStyleFile = registerForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri == null) return@registerForActivityResult
+        val raw = runCatching {
+            contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+        }.getOrNull()
+        if (raw.isNullOrBlank()) {
+            toast("Couldn't read that file.")
+            return@registerForActivityResult
+        }
+        if (ChatStyle.importJson(this, raw)) {
+            renderStyleUi()
+            toast("Style imported.")
+        } else {
+            toast("That file isn't a chat style export.")
+        }
+    }
 
     private val pickImage = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri == null) {
@@ -105,25 +141,52 @@ class MainActivity : AppCompatActivity() {
         styleStatus = findViewById(R.id.styleStatus)
         styleUpdatedAt = findViewById(R.id.styleUpdatedAt)
         styleSamplesEdit = findViewById(R.id.styleSamplesEdit)
-        styleSamplesEdit.setText(Prefs.chatStyleSamples(this))
+        styleExampleEdit = findViewById(R.id.styleExampleEdit)
+        styleMessagesBox = findViewById(R.id.styleMessagesBox)
+        styleMessagesList = findViewById(R.id.styleMessagesList)
+        btnStyleMessages = findViewById(R.id.btnStyleMessages)
         renderStyleUi()
+        // Typing here is the user's own edit: it wins over auto-regeneration.
+        // Programmatic refills happen while the box is unfocused, so skipped.
+        styleExampleEdit.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: android.text.Editable?) {
+                if (!styleExampleEdit.hasFocus()) return
+                Prefs.setChatStyleExample(this@MainActivity, s?.toString().orEmpty())
+                Prefs.setChatStyleExampleEdited(this@MainActivity, true)
+            }
+        })
+        btnStyleMessages.setOnClickListener {
+            val open = styleMessagesBox.visibility != View.VISIBLE
+            styleMessagesBox.visibility = if (open) View.VISIBLE else View.GONE
+            btnStyleMessages.text = if (open) "Your sent messages ▾" else "Your sent messages ▸"
+        }
         findViewById<Button>(R.id.btnAnalyzeStyle).setOnClickListener {
-            val samples = styleSamplesEdit.text.toString().trim()
-            if (samples.isEmpty()) {
+            val pasted = styleSamplesEdit.text.toString().split("\n")
+                .map { it.trim() }.filter { it.isNotEmpty() }
+            if (pasted.isEmpty()) {
                 toast("Paste a few of your messages first.")
                 return@setOnClickListener
             }
-            runStyleAnalysis(samples, samples)
+            // Pasted lines are the user's explicit input: they replace the
+            // stored samples and the example is rebuilt from them.
+            runStyleAnalysis(pasted, resetExample = true)
         }
         findViewById<Button>(R.id.btnLearnStyle).setOnClickListener { learnStyleFromChats() }
         findViewById<Button>(R.id.btnClearStyle).setOnClickListener {
             Prefs.clearChatStyle(this)
             styleSamplesEdit.setText("")
             renderStyleUi()
-            toast("Chat style cleared.")
+            toast("Chat style cleared. It refills from your chats next time you open the bubble.")
         }
-        findViewById<Button>(R.id.btnExportStyle).setOnClickListener { exportStyle() }
-        findViewById<Button>(R.id.btnImportStyle).setOnClickListener { importStyle() }
+        findViewById<Button>(R.id.btnExportStyle).setOnClickListener {
+            exportPayload = ChatStyle.exportJson(this)
+            exportStyleFile.launch("chat-style.json")
+        }
+        findViewById<Button>(R.id.btnImportStyle).setOnClickListener {
+            importStyleFile.launch(arrayOf("application/json", "text/plain", "*/*"))
+        }
         findViewById<Button>(R.id.btnCaptureLog).setOnClickListener {
             startActivity(android.content.Intent(this, CaptureLogActivity::class.java))
         }
@@ -248,10 +311,10 @@ class MainActivity : AppCompatActivity() {
             updateStartButton()
             android.widget.Toast.makeText(
                 this,
-                if (isAccessibilityEnabled()) {
+                if (SetupCheck.complete(this)) {
                     "Bubble running — it shows here and on chat screens"
                 } else {
-                    "Bubble running here. Enable screen reading (step 2) so it also appears inside chats"
+                    "Bubble running on chat screens once steps 1 and 2 are done. It shows here only after both"
                 },
                 android.widget.Toast.LENGTH_LONG,
             ).show()
@@ -279,6 +342,7 @@ class MainActivity : AppCompatActivity() {
         updateStartButton()
         ChatBus.loadFromPrefs()
         renderMatchList()
+        renderStyleUi()
         // The bubble shows in our own app too while the service runs.
         ChatBus.setOwnAppForeground(true)
     }
@@ -376,13 +440,36 @@ class MainActivity : AppCompatActivity() {
         android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_SHORT).show()
     }
 
-    /** "My chat style": your samples plus the analyzed voice profile. */
+    /**
+     * "My chat style": the learned pattern and the editable example. Match
+     * messages never appear here; the user's own sent lines sit behind a
+     * collapsed toggle.
+     */
     private fun renderStyleUi() {
-        val raw = Prefs.chatStyleJson(this)
-        val parsed = runCatching { JSONObject(raw) }.getOrNull()
+        val parsed = runCatching { JSONObject(Prefs.chatStyleJson(this)) }.getOrNull()
         val summary = parsed?.optString("summary", "").orEmpty().trim()
+        val sent = ChatStyle.storedLines(this)
+        btnStyleMessages.text = (if (styleMessagesBox.visibility == View.VISIBLE) "Your sent messages ▾ (" else "Your sent messages ▸ (") +
+            "${sent.size})"
+        styleMessagesList.removeAllViews()
+        for (line in sent) {
+            styleMessagesList.addView(TextView(this).apply {
+                text = line
+                textSize = 13f
+                setPadding(0, 2, 0, 2)
+                setTextColor(getColor(android.R.color.black))
+            })
+        }
+        if (!styleExampleEdit.hasFocus()) {
+            val example = Prefs.chatStyleExample(this)
+            if (styleExampleEdit.text.toString() != example) styleExampleEdit.setText(example)
+        }
         if (summary.isBlank()) {
-            styleStatus.text = "No style saved yet — paste samples below or tap Learn from my chats."
+            styleStatus.text = if (sent.isEmpty()) {
+                "Nothing learned yet — chat a bit first; it learns each time you open the bubble."
+            } else {
+                "Not learned yet from your ${sent.size} sent messages — tap Learn now."
+            }
             styleUpdatedAt.text = ""
             return
         }
@@ -399,95 +486,30 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun runStyleAnalysis(samples: String, saveSamples: String) {
+    private fun runStyleAnalysis(lines: List<String>, resetExample: Boolean) {
         if (analyzingStyle) return
         analyzingStyle = true
         styleStatus.text = "Analyzing your writing…"
-        ApiClient.analyzeStyle(Prefs.backendUrl(this), samples) { result ->
+        ChatStyle.analyze(this, lines, resetExample = resetExample) { ok ->
             analyzingStyle = false
-            result.fold(
-                onSuccess = { profile ->
-                    Prefs.setChatStyleSamples(this, saveSamples)
-                    Prefs.setChatStyleJson(
-                        this,
-                        JSONObject()
-                            .put("summary", profile.summary)
-                            .put("traits", org.json.JSONArray(profile.traits))
-                            .put("at", System.currentTimeMillis())
-                            .toString(),
-                    )
-                    styleSamplesEdit.setText(saveSamples)
-                    renderStyleUi()
-                    toast("Style saved — future suggestions write like you.")
-                },
-                onFailure = { e ->
-                    renderStyleUi()
-                    toast("Couldn't analyze: ${e.message}")
-                },
-            )
+            if (ok) {
+                styleSamplesEdit.setText("")
+                toast("Style saved — future suggestions write like you.")
+            } else {
+                toast("Couldn't analyze your style. Check your connection and try again.")
+            }
+            renderStyleUi()
         }
     }
 
-    /** Harvests YOUR lines from every captured chat and analyzes them. */
+    /** Harvests YOUR lines from every captured chat and analyzes them now. */
     private fun learnStyleFromChats() {
-        val mine = ChatBus.all().asSequence()
-            .flatMap { (_, s) ->
-                ChatBus.applySpeakerFixes(s.text, s.speakerFixes).lineSequence()
-            }
-            .map { it.trim() }
-            .filter { it.startsWith("[USER]", ignoreCase = true) }
-            .map { it.substringAfter("]:", it).trim() }
-            .filter { it.isNotEmpty() }
-            .distinct()
-            .take(60)
-            .toList()
-        val samples = mine.joinToString("\n").take(3500)
-        if (samples.isBlank()) {
+        val mine = ChatStyle.myLines()
+        if (mine.isEmpty()) {
             toast("No messages from you captured yet — chat first, then tap again.")
             return
         }
-        runStyleAnalysis(samples, samples)
-    }
-
-    private fun exportStyle() {
-        val analysis = runCatching { JSONObject(Prefs.chatStyleJson(this)) }.getOrElse { JSONObject() }
-        val payload = JSONObject()
-            .put("app", "chat-assist-style")
-            .put("v", 1)
-            .put("samples", Prefs.chatStyleSamples(this))
-            .put("analysis", analysis)
-            .toString()
-        val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
-        cm.setPrimaryClip(android.content.ClipData.newPlainText("chat-style", payload))
-        toast("Style copied — paste it anywhere to back up or move devices.")
-    }
-
-    private fun importStyle() {
-        val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
-        val raw = cm.primaryClip?.getItemAt(0)?.coerceToText(this)?.toString().orEmpty()
-        try {
-            val json = JSONObject(raw)
-            if (json.optString("app") != "chat-assist-style") {
-                throw IllegalArgumentException("not a style export")
-            }
-            val samples = json.optString("samples", "").trim()
-            if (samples.isEmpty()) throw IllegalArgumentException("export has no samples")
-            val analysis = json.optJSONObject("analysis") ?: JSONObject()
-            Prefs.setChatStyleSamples(this, samples)
-            if (analysis.optString("summary", "").isNotBlank()) {
-                if (analysis.optLong("at", 0L) == 0L) {
-                    analysis.put("at", System.currentTimeMillis())
-                }
-                Prefs.setChatStyleJson(this, analysis.toString())
-            } else {
-                Prefs.setChatStyleJson(this, "")
-            }
-            styleSamplesEdit.setText(samples)
-            renderStyleUi()
-            toast("Style imported.")
-        } catch (_: Exception) {
-            toast("Clipboard doesn't hold a style export — Export first, then copy.")
-        }
+        runStyleAnalysis((mine + ChatStyle.storedLines(this)).distinct(), resetExample = false)
     }
 
     private fun renderAppsList() {
@@ -568,7 +590,7 @@ class MainActivity : AppCompatActivity() {
     private fun refreshStatus() {
         val overlayOk = Settings.canDrawOverlays(this)
         statusOverlay.text = "1. Display over other apps: ${if (overlayOk) "granted ✓" else "not granted"}"
-        val a11yOk = isAccessibilityEnabled()
+        val a11yOk = SetupCheck.accessibilityEnabled(this)
         statusA11y.text = "2. Accessibility service: ${if (a11yOk) "enabled ✓" else "not enabled"}"
         a11yHint.visibility = if (a11yOk) android.view.View.GONE else android.view.View.VISIBLE
         // Proof of life independent of the toggle above: if captures flow,
@@ -587,15 +609,6 @@ class MainActivity : AppCompatActivity() {
             "3. Battery optimization: ${if (exempt) "off ✓ (bubble stays alive)" else "ON — bubble dies after minutes"}"
         findViewById<Button>(R.id.btnBattery).visibility =
             if (exempt) android.view.View.GONE else android.view.View.VISIBLE
-    }
-
-    private fun isAccessibilityEnabled(): Boolean {
-        // Package-prefix match instead of the exact flattened component:
-        // survives short-form entries, renames, and OEM string quirks in
-        // the secure setting that made the strict check report "not
-        // enabled" on devices where the service was actually running.
-        val enabled = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
-        return enabled?.split(":")?.any { it.startsWith("$packageName/") } == true
     }
 
     private fun requestNotificationPermissionIfNeeded() {

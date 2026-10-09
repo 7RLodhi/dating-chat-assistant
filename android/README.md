@@ -175,12 +175,18 @@ app to go back to tap-to-copy. Safeguards, all deliberate:
   summary at all learns itself once the match has written something (panel
   open or detail screen open) — otherwise brand-new chats stay blank. After
   that the summary is frozen: scrolling, expanding, Refresh and reopening
-  never touch it; only the Learn / Load summary buttons re-learn (merging new
-  details into the existing sheet, never replacing it).
-- **My chat style:** the app's style section analyzes pasted samples (or
-  harvests your own captured lines) via /api/style, sends the voice with
-  every generation, re-learns on demand, and imports/exports the profile as
-  clipboard JSON for backup or device moves.
+  never touch it. Opening the bubble on a chat with new match messages merges
+  the new details into the sheet (the Learn button re-learns on demand). The
+  Load summary button on the detail screen was removed.
+- **Opening questions:** built from the learned sheet via the opener
+  generator, shown under the summary as tap-to-paste lines.
+- **My chat style** (setup screen, "About you"): learned only from YOUR sent
+  lines; match messages are never shown. It shows the learned pattern, an
+  editable example paragraph (your edit wins and stops auto-updates), and your
+  sent messages behind a collapsed toggle. It refreshes on every bubble open
+  and summary learn, but only when your lines changed. Export/Import use the
+  system file picker (a `chat-style.json` file), not the clipboard.
+- **Bubble inside this app:** shows only when steps 1 and 2 are both done.
 - **Tap-to-flip attribution:** tapping a chat row in the panel reassigns it
   to the other side, stores the correction positionally (survives
   re-captures), and regenerates suggestions from the corrected text.

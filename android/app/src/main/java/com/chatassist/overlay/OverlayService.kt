@@ -178,9 +178,16 @@ class OverlayService : Service() {
             ChatBus.noteBubbleVisibility(false, "$cause + panel open")
             return
         }
-        val visible = ChatBus.inConversation || ChatBus.ownAppForeground
+        // Inside our own app the bubble shows only when setup is complete
+        // (overlay + screen reading), the same two steps it needs in chats.
+        // Our own screens win over a stale chat verdict.
+        val visible = if (ChatBus.ownAppForeground) {
+            SetupCheck.complete(this)
+        } else {
+            ChatBus.inConversation
+        }
         bubble?.visibility = if (visible) View.VISIBLE else View.GONE
-        setBubbleTouchable(ChatBus.inConversation && !ChatBus.ownAppForeground)
+        setBubbleTouchable(visible && !ChatBus.ownAppForeground)
         ChatBus.noteBubbleVisibility(
             visible,
             "$cause inConversation=${ChatBus.inConversation} ownApp=${ChatBus.ownAppForeground}",
@@ -627,6 +634,9 @@ class OverlayService : Service() {
         syncBubbleVisibility("panel opened")
         loadSuggestions()
         refreshFactsOnOpen()
+        // Every bubble open re-reads the user's own lines; the network is
+        // only hit when those lines actually changed.
+        ChatStyle.autoRefresh(this)
     }
 
     /**
@@ -946,7 +956,7 @@ class OverlayService : Service() {
             },
             tasteProfile = Prefs.tasteProfile(this),
             userGender = Prefs.userGender(this),
-            styleExamples = Prefs.chatStyleSamples(this).trim().take(4000),
+            styleExamples = Prefs.styleForRequest(this).trim().take(4000),
             userName = Prefs.userName(this),
         )
     }
@@ -1048,6 +1058,7 @@ class OverlayService : Service() {
             result.fold(
                 onSuccess = { (json, sheet) ->
                     ChatBus.updateFacts(key, json.toString(), text)
+                    ChatStyle.autoRefresh(this)
                     if (ChatBus.latestKey == key) {
                         val summaryRows = pv.findViewById<LinearLayout>(R.id.summaryRows)
                         renderFactSheet(summaryRows, sheet, ChatBus.get(key)?.userNote.orEmpty())
@@ -1116,7 +1127,7 @@ class OverlayService : Service() {
         // regenerate, not re-serve the ungendered batch. Same for the
         // chat-style samples: saving a voice must invalidate the cache.
         val genderTag = Prefs.userGender(this).takeIf { it == "male" || it == "female" } ?: ""
-        val style = Prefs.chatStyleSamples(this).trim().take(4000)
+        val style = Prefs.styleForRequest(this).trim().take(4000)
         // Name too: entering or changing it must regenerate the batch.
         val userName = Prefs.userName(this)
         val fingerprint = if (opener) {

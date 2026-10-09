@@ -186,10 +186,58 @@ object Prefs {
             .putString(KEY_CHAT_STYLE_JSON, json).apply()
     }
 
+    // Editable example paragraph in the user's own words. Auto-regenerated
+    // from the samples until the user edits it; after that their edit wins.
+    private const val KEY_CHAT_STYLE_EXAMPLE = "chat_style_example"
+    private const val KEY_CHAT_STYLE_EXAMPLE_EDITED = "chat_style_example_edited"
+    // Fingerprint of the captured lines behind the last analysis (skip when unchanged).
+    private const val KEY_CHAT_STYLE_HASH = "chat_style_hash"
+
+    fun chatStyleExample(ctx: Context): String =
+        ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            .getString(KEY_CHAT_STYLE_EXAMPLE, "").orEmpty()
+
+    fun setChatStyleExample(ctx: Context, text: String) {
+        ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+            .putString(KEY_CHAT_STYLE_EXAMPLE, text.take(1000)).apply()
+    }
+
+    fun chatStyleExampleEdited(ctx: Context): Boolean =
+        ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            .getBoolean(KEY_CHAT_STYLE_EXAMPLE_EDITED, false)
+
+    fun setChatStyleExampleEdited(ctx: Context, edited: Boolean) {
+        ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+            .putBoolean(KEY_CHAT_STYLE_EXAMPLE_EDITED, edited).apply()
+    }
+
+    fun chatStyleHash(ctx: Context): String =
+        ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            .getString(KEY_CHAT_STYLE_HASH, "").orEmpty()
+
+    fun setChatStyleHash(ctx: Context, hash: String) {
+        ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+            .putString(KEY_CHAT_STYLE_HASH, hash).apply()
+    }
+
+    /**
+     * The style sent with every generation: the user's own edited example
+     * when they wrote one, otherwise their sent lines.
+     */
+    fun styleForRequest(ctx: Context): String =
+        if (chatStyleExampleEdited(ctx) && chatStyleExample(ctx).isNotBlank()) {
+            chatStyleExample(ctx)
+        } else {
+            chatStyleSamples(ctx)
+        }
+
     fun clearChatStyle(ctx: Context) {
         ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
             .remove(KEY_CHAT_STYLE_SAMPLES)
             .remove(KEY_CHAT_STYLE_JSON)
+            .remove(KEY_CHAT_STYLE_EXAMPLE)
+            .remove(KEY_CHAT_STYLE_EXAMPLE_EDITED)
+            .remove(KEY_CHAT_STYLE_HASH)
             .apply()
     }
 
