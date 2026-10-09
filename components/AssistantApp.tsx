@@ -56,7 +56,7 @@ import {
   useScreenshotUpload,
 } from "@/lib/useScreenshotUpload";
 import { usePwaInstall } from "@/lib/pwa";
-import { APP_VERSION } from "@/lib/version";
+import { ANDROID_APK_URL, ANDROID_VERSION, APP_VERSION } from "@/lib/version";
 import { FactsResponse, Goal, Language, MatchFacts, Mode, PendingOutcome, SuggestResponse, Tone, UserGender } from "@/lib/types";
 
 export default function AssistantApp() {
@@ -846,6 +846,13 @@ export default function AssistantApp() {
         generate suggestions and is not stored beyond what's needed to do that. You always
         choose what to send — nothing is sent on your behalf.
         <span className="mt-1 block">{APP_VERSION}</span>
+        <a
+          href={ANDROID_APK_URL}
+          download
+          className="mt-2 inline-block underline hover:text-gray-600"
+        >
+          Download Android app (v{ANDROID_VERSION} APK)
+        </a>
       </footer>
 
       <PaywallModal open={showPaywall} onClose={() => setShowPaywall(false)} />
