@@ -530,6 +530,13 @@ class SnapchatParser : ChatParser("com.snapchat.android") {
                 i += 1
                 continue
             }
+            // Snap envelope labels ("snap_envelope", also when they arrive as
+            // a quoted reply) are media chrome, never a message: dropped here,
+            // before the quote branch can wrap them as "(quoted) …".
+            if (isMediaMarker(text)) {
+                i += 1
+                continue
+            }
             val quoted = quoteAuthor
             quoteAuthor = null
             val sp = speaker ?: "MATCH"
