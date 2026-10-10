@@ -393,6 +393,9 @@ class SnapchatParser : ChatParser("com.snapchat.android") {
         // quote-header rule below, which would misread "Opened 16:00" as a
         // "NAME time" header and flip the NEXT line's speaker.)
         Regex("""(?i)^(delivered|opened|received|sent|viewed)\s+\d{1,2}:\d{2}(:\d{2})?(\s?[ap]m)?$"""),
+        // System banners for deleted chats: "YOGI JI DELETED A CHAT" and
+        // "YOU DELETED A CHAT" are not messages.
+        Regex("""(?i)^(.+ )?deleted a chat$"""),
         // Chat header subtitle chrome, read as messages when the header is in
         // the captured tree: a relative age ("18h", "3d") alone on a line...
         Regex("""(?i)^\d{1,3}\s*[smhdwy]$"""),

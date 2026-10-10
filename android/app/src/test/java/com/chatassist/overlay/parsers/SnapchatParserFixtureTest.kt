@@ -59,6 +59,19 @@ class SnapchatParserFixtureTest {
     }
 
     @Test
+    fun deletedChatBannersAreNotMessages() {
+        // Regression (0.64.2): "YOGI JI DELETED A CHAT" must not become a
+        // match message; the real lines around it keep their speakers.
+        assertEquals(
+            listOf(
+                "[USER]: ?",
+                "[MATCH]: Kah shi ho",
+            ).joinToString("\n"),
+            run("deleted_chat_banner.tsv"),
+        )
+    }
+
+    @Test
     fun envelopeAfterQuoteDoesNotLeakTheQuoteOntoNextMessage() {
         // Regression (0.61/0.62): a skipped snap envelope must clear the
         // pending quote, or "Okay" would be filed as a quoted reply.
