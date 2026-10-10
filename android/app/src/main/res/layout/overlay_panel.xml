@@ -120,6 +120,43 @@
             android:orientation="vertical" />
     </ScrollView>
 
+    <!-- First open of a chat: pick what to generate. Hidden after a choice. -->
+    <LinearLayout
+        android:id="@+id/chooserBox"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <Button
+            android:id="@+id/chooseOpeners"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Generate openers" />
+
+        <Button
+            android:id="@+id/choosePuns"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="Generate name puns" />
+
+        <Button
+            android:id="@+id/chooseReplies"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="Generate reply suggestions" />
+
+        <Button
+            android:id="@+id/chooseLearn"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="Learn &amp; load older messages first" />
+    </LinearLayout>
+
     <ScrollView
         android:layout_width="match_parent"
         android:layout_height="0dp"

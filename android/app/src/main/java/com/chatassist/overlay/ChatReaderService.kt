@@ -25,6 +25,10 @@ class ChatReaderService : AccessibilityService() {
 
     companion object {
         private const val DEBOUNCE_MS = 1500L
+        /** Wait after each scroll so the list settles before reading it. */
+        private const val SCROLL_SETTLE_MS = 900L
+        /** Matches the server's per-request input limit. */
+        private const val MAX_MERGED_CHARS = 4000
     }
 
     private var lastPublishAt = 0L
@@ -73,12 +77,100 @@ class ChatReaderService : AccessibilityService() {
         ChatBus.setPasteHandler(::handlePasteRequest)
         // Panel Refresh bypasses debounce/hash and captures right now.
         ChatBus.setCaptureHandler(::handleCaptureRequest)
+        ChatBus.setScrollBackHandler(::handleScrollBackRequest)
     }
 
     override fun onDestroy() {
         ChatBus.setPasteHandler(null)
         ChatBus.setCaptureHandler(null)
+        ChatBus.setScrollBackHandler(null)
         super.onDestroy()
+    }
+
+    /**
+     * Scrolls the open chat upward a few screens so older messages load, then
+     * stores everything seen as one text (newest kept). Only scrolls: never
+     * taps, types or sends. Stops at [steps], or early when two scrolls add
+     * no new lines (top of chat reached, or the app ignores the scroll).
+     */
+    private fun handleScrollBackRequest(steps: Int, done: (Int) -> Unit) {
+        val fg = ChatBus.foregroundPackage
+        if (fg !in ChatBus.SUPPORTED_PACKAGES || !ChatBus.isAppEnabled(fg)) {
+            done(0)
+            return
+        }
+        var merged = linesOf(ChatBus.get(ChatBus.latestKey)?.text.orEmpty())
+        var taken = 0
+        var stale = 0
+
+        fun finish() {
+            if (merged.isNotEmpty()) {
+                // Keep the newest lines within the server's input limit.
+                val kept = mutableListOf<String>()
+                var used = 0
+                for (line in merged.asReversed()) {
+                    if (used + line.length + 1 > MAX_MERGED_CHARS) break
+                    kept.add(line)
+                    used += line.length + 1
+                }
+                kept.reverse()
+                ChatBus.setMergedText(ChatBus.latestKey, kept.joinToString("\n"))
+            }
+            done(taken)
+        }
+
+        fun step() {
+            if (taken >= steps || stale >= 2) return finish()
+            val root = findConversationRoot(fg) ?: return finish()
+            val scroller = findScrollable(root) ?: return finish()
+            scroller.performAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
+            taken++
+            mainHandler.postDelayed({
+                publishCurrent(fg, force = true)
+                val now = linesOf(ChatBus.get(ChatBus.latestKey)?.text.orEmpty())
+                val before = merged.size
+                merged = prependOlder(now, merged)
+                stale = if (merged.size == before) stale + 1 else 0
+                step()
+            }, SCROLL_SETTLE_MS)
+        }
+        step()
+    }
+
+    private fun linesOf(text: String): List<String> =
+        text.lineSequence().map { it.trim() }.filter { it.isNotEmpty() }.toList()
+
+    /**
+     * Joins an older screen onto what was already collected. Scrolling up
+     * shows the older rows, whose bottom overlaps the top of [current]; the
+     * longest such overlap is dropped so each message appears once.
+     */
+    private fun prependOlder(older: List<String>, current: List<String>): List<String> {
+        for (m in minOf(older.size, current.size) downTo 1) {
+            if (older.takeLast(m) == current.take(m)) return older + current.drop(m)
+        }
+        return older + current
+    }
+
+    /** The big scrollable message list: the largest visible scrollable node. */
+    private fun findScrollable(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        var best: AccessibilityNodeInfo? = null
+        var bestArea = 0
+        fun walk(node: AccessibilityNodeInfo) {
+            if (node.isScrollable && node.isVisibleToUser) {
+                val b = Rect()
+                node.getBoundsInScreen(b)
+                if (b.width() * b.height() > bestArea) {
+                    bestArea = b.width() * b.height()
+                    best = node
+                }
+            }
+            for (i in 0 until node.childCount) {
+                node.getChild(i)?.let { walk(it) }
+            }
+        }
+        walk(root)
+        return best
     }
 
     /**

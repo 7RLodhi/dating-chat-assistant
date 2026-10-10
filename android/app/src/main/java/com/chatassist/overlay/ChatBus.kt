@@ -534,6 +534,35 @@ object ChatBus {
         }
     }
 
+    /** Scroll-back plumbing (same pattern): reader scrolls the chat up, reports steps taken. */
+    private var scrollBackHandler: ((Int, (Int) -> Unit) -> Unit)? = null
+
+    @Synchronized
+    fun setScrollBackHandler(handler: ((Int, (Int) -> Unit) -> Unit)?) {
+        scrollBackHandler = handler
+    }
+
+    fun requestScrollBack(steps: Int, done: (Int) -> Unit) {
+        val handler = synchronized(this) { scrollBackHandler }
+        if (handler == null) {
+            done(0)
+            return
+        }
+        try {
+            handler(steps, done)
+        } catch (_: Exception) {
+            done(0)
+        }
+    }
+
+    /** Stores a text merged from several scrolled screens (keeps the rest of the snapshot). */
+    @Synchronized
+    fun setMergedText(key: String, text: String) {
+        val existing = snapshots[key] ?: return
+        snapshots[key] = existing.copy(text = text)
+        persistLocked()
+    }
+
     fun labelFor(key: String, snapshot: ChatSnapshot): String {
         val app = appLabel(snapshot.appPackage)
         val title = snapshot.title?.takeIf { it.isNotBlank() }

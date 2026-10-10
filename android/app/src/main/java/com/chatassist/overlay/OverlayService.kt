@@ -153,6 +153,13 @@ class OverlayService : Service() {
             val key = ChatBus.latestKey
             refreshChatSection()
             if (key == renderedKey) return@post
+            // A first-time chat switched to with the panel open gets the chooser too.
+            if (ChatBus.get(key)?.bubbleUsed == false) {
+                ChatBus.markBubbleUsed(key)
+                showChooser()
+                renderStoredSummary(panel!!)
+                return@post
+            }
             if (loadingSuggestions) {
                 pendingKey = key
             } else {
@@ -608,6 +615,18 @@ class OverlayService : Service() {
         // Learn = Refresh, plus re-learns the match summary from whatever
         // is on screen right now. The ONLY path that fetches facts — rows,
         // toggles and scrolling never trigger learning on their own.
+        panelView.findViewById<Button>(R.id.chooseOpeners).setOnClickListener {
+            chooseAndRun { loadSuggestions(force = true, openerMode = true, withName = false) }
+        }
+        panelView.findViewById<Button>(R.id.choosePuns).setOnClickListener {
+            chooseAndRun { loadSuggestions(force = true, openerMode = true, withName = true) }
+        }
+        panelView.findViewById<Button>(R.id.chooseReplies).setOnClickListener {
+            chooseAndRun { loadSuggestions(force = true) }
+        }
+        panelView.findViewById<Button>(R.id.chooseLearn).setOnClickListener {
+            chooseAndRun { learnThenReplies() }
+        }
         panelView.findViewById<Button>(R.id.btnLearn).setOnClickListener {
             ChatBus.requestCapture()
             refreshChatSection()
@@ -632,13 +651,52 @@ class OverlayService : Service() {
         // The bubble would sit under/over the panel and steal taps — hide it
         // until the panel closes.
         syncBubbleVisibility("panel opened")
-        loadSuggestions()
-        refreshFactsOnOpen()
+        // First open of a chat: ask what to generate instead of generating
+        // everything at once. Later opens behave as before.
+        val firstTime = ChatBus.get(ChatBus.latestKey)?.bubbleUsed == false
         // The Matches list shows only chats the bubble was opened on.
         ChatBus.markBubbleUsed(ChatBus.latestKey)
+        if (firstTime) {
+            showChooser()
+        } else {
+            loadSuggestions()
+            refreshFactsOnOpen()
+        }
         // Every bubble open re-reads the user's own lines; the network is
         // only hit when those lines actually changed.
         ChatStyle.autoRefresh(this)
+    }
+
+    private val scrollBackSteps = 5
+
+    /** First-open chooser for a chat: shows the four options, clears the list. */
+    private fun showChooser() {
+        val pv = panel ?: return
+        pv.findViewById<View>(R.id.chooserBox).visibility = View.VISIBLE
+        pv.findViewById<LinearLayout>(R.id.suggestionList).removeAllViews()
+        pv.findViewById<TextView>(R.id.moodText).text = "New chat — what should I generate?"
+        renderedKey = ChatBus.latestKey
+        pendingKey = null
+    }
+
+    private fun chooseAndRun(action: () -> Unit) {
+        panel?.findViewById<View>(R.id.chooserBox)?.visibility = View.GONE
+        action()
+    }
+
+    /** Scrolls the chat up so older messages load, then learns and generates replies from them. */
+    private fun learnThenReplies() {
+        val pv = panel ?: return
+        pv.findViewById<TextView>(R.id.moodText).text = "Scrolling up to load older messages…"
+        ChatBus.requestScrollBack(scrollBackSteps) { taken ->
+            if (panel == null) return@requestScrollBack
+            if (taken == 0) {
+                Toast.makeText(this, "Couldn't scroll this app — using the visible messages", Toast.LENGTH_SHORT).show()
+            }
+            refreshChatSection()
+            loadFacts()
+            loadSuggestions(force = true)
+        }
     }
 
     /**
@@ -1090,7 +1148,13 @@ class OverlayService : Service() {
      * something, and the tone is part of what makes a batch fresh. Auto
      * paths (chat switch, flip reload) use the cache to save API calls.
      */
-    private fun loadSuggestions(force: Boolean = false) {
+    /**
+     * [openerMode] forces openers (null = decide from the chat). [withName]
+     * controls whether the match's name goes in: the server runs the name-pun
+     * check only for openers that include it, so "Openers" and "Name puns"
+     * differ by this flag.
+     */
+    private fun loadSuggestions(force: Boolean = false, openerMode: Boolean? = null, withName: Boolean = true) {
         if (loadingSuggestions) return
         val panelView = panel ?: return
         val chatLabel = panelView.findViewById<TextView>(R.id.chatLabel)
@@ -1115,7 +1179,7 @@ class OverlayService : Service() {
         // a fresh message-less chat): opening lines + name puns instead of
         // replies to nothing. A known chat title is enough; only a
         // title-less blank means nothing was captured at all.
-        val opener = !hasMatchContent(text)
+        val opener = openerMode ?: !hasMatchContent(text)
         chatLabel.text = ChatBus.labelFor(key, snapshot)
         // Smart refresh: same request as last time → re-render the stored
         // batch instantly instead of burning another API call. Taste, gender
@@ -1132,11 +1196,18 @@ class OverlayService : Service() {
         val style = Prefs.styleForRequest(this).trim().take(4000)
         // Name too: entering or changing it must regenerate the batch.
         val userName = Prefs.userName(this)
+        // Openers are written from what is known about the match: the learned
+        // sheet when there is one, otherwise the captured chat itself.
+        val openerProfile = snapshot.factsJson
+            ?.let { runCatching { ApiClient.factsProfileText(JSONObject(it)) }.getOrNull() }
+            ?.takeIf { it.isNotBlank() } ?: text
         val fingerprint = if (opener) {
-            "v2|$tone|opener|${snapshot.title.orEmpty()}|t${taste.hashCode()}|g$genderTag|s${style.hashCode()}|n${userName.hashCode()}"
+            "v2|$tone|opener|${snapshot.title.orEmpty()}|w$withName|p${openerProfile.hashCode()}|t${taste.hashCode()}|g$genderTag|s${style.hashCode()}|n${userName.hashCode()}"
         } else {
             "v2|$tone|reply|$text|t${taste.hashCode()}|g$genderTag|s${style.hashCode()}|n${userName.hashCode()}"
         }
+        // Opener-without-name request has no name in it.
+        val requestName = if (withName) snapshot.title.orEmpty() else ""
         if (!force && snapshot.suggestMode == mode && snapshot.suggestFor == fingerprint &&
             snapshot.suggestItems.isNotEmpty()
         ) {
@@ -1156,7 +1227,8 @@ class OverlayService : Service() {
                 Prefs.backendUrl(this),
                 "", tone,
                 mode = "opener",
-                matchName = snapshot.title.orEmpty(),
+                profileText = openerProfile,
+                matchName = requestName,
                 callback = { result -> onSuggestionsLoaded(result, moodText, list, key, mode, fingerprint) },
                 tasteProfile = taste,
                 userGender = userGender,
