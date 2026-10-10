@@ -29,19 +29,38 @@ Write-Output "Installed: $ver"
 Adb shell appops set $Package SYSTEM_ALERT_WINDOW allow | Out-Null
 Write-Output "Overlay permission: granted"
 
+# Collapse the notification shade if it is open, or it hides the app.
+Adb shell cmd statusbar collapse | Out-Null
 Adb shell am start -n "$Package/.MainActivity" | Out-Null
 Start-Sleep -Seconds 2
-Adb shell uiautomator dump /sdcard/ui.xml | Out-Null
-$xml = (Adb shell cat /sdcard/ui.xml) -join ""
-$m = [regex]::Match($xml, 'text="Start bubble"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"')
-if ($m.Success) {
-    $x = [int](([int]$m.Groups[1].Value + [int]$m.Groups[3].Value) / 2)
-    $y = [int](([int]$m.Groups[2].Value + [int]$m.Groups[4].Value) / 2)
-    Adb shell input tap $x $y | Out-Null
-    Write-Output "Start bubble: tapped"
-} else {
-    Write-Output "Start bubble: button not visible (scroll the app down and tap it, or it is already running)"
+
+# Start from the top of the setup screen (it may be left scrolled down from
+# a previous run), then scroll down until the Start button is on screen.
+for ($i = 0; $i -lt 6; $i++) {
+    Adb shell input swipe 540 900 540 1900 300 | Out-Null
+    Start-Sleep -Milliseconds 400
 }
+$tapped = $false
+for ($attempt = 0; $attempt -le 40 -and -not $tapped; $attempt++) {
+    Adb shell uiautomator dump /sdcard/ui.xml | Out-Null
+    $xml = (Adb shell cat /sdcard/ui.xml) -join ""
+    # Buttons render in capitals ("START BUBBLE"), so match case-insensitively.
+    $m = [regex]::Match($xml, 'text="Start bubble"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"', 'IgnoreCase')
+    if ($m.Success) {
+        $x = [int](([int]$m.Groups[1].Value + [int]$m.Groups[3].Value) / 2)
+        $y = [int](([int]$m.Groups[2].Value + [int]$m.Groups[4].Value) / 2)
+        $screenH = [int]([regex]::Match($xml, 'bounds="\[0,0\]\[(\d+),(\d+)\]"').Groups[2].Value)
+        if ($screenH -gt 0 -and $y -lt $screenH - 50) {
+            Adb shell input tap $x $y | Out-Null
+            $tapped = $true
+            break
+        }
+    }
+    # Scroll the setup list down (finger moves up from the lower screen).
+    Adb shell input swipe 540 1800 540 900 400 | Out-Null
+    Start-Sleep -Milliseconds 700
+}
+if ($tapped) { Write-Output "Start bubble: tapped" } else { Write-Output "Start bubble: not found after scrolling" }
 Start-Sleep -Seconds 3
 
 $crashes = @(Adb logcat -d -t 300 | Select-String "FATAL EXCEPTION|AndroidRuntime.*$Package")
