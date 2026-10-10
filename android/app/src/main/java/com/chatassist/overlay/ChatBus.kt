@@ -210,7 +210,13 @@ object ChatBus {
     @Synchronized
     fun noteCaptureSkip(reason: String) {
         skipCounts[reason] = (skipCounts[reason] ?: 0) + 1
+        lastSkipReason = reason
     }
+
+    /** Reason the most recent capture stored nothing (empty after a successful read). */
+    @Volatile
+    var lastSkipReason: String = ""
+        private set
 
     @Synchronized
     fun captureSkipSummary(): String =
@@ -526,10 +532,15 @@ object ChatBus {
 
     fun requestCapture(): Boolean {
         val handler = synchronized(this) { captureHandler }
-        if (handler == null) return false
+        synchronized(this) { lastSkipReason = "" }
+        if (handler == null) {
+            noteCaptureSkip("service-not-running")
+            return false
+        }
         return try {
             handler()
         } catch (_: Exception) {
+            noteCaptureSkip("exception")
             false
         }
     }

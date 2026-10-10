@@ -211,7 +211,14 @@ class ChatReaderService : AccessibilityService() {
      */
     private fun handleCaptureRequest(): Boolean {
         val fg = ChatBus.foregroundPackage
-        if (fg !in ChatBus.SUPPORTED_PACKAGES || !ChatBus.isAppEnabled(fg)) return false
+        if (fg !in ChatBus.SUPPORTED_PACKAGES) {
+            ChatBus.noteCaptureSkip("not-a-dating-app")
+            return false
+        }
+        if (!ChatBus.isAppEnabled(fg)) {
+            ChatBus.noteCaptureSkip("app-disabled")
+            return false
+        }
         return publishCurrent(fg, force = true)
     }
 

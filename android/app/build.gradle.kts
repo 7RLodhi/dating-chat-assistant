@@ -19,8 +19,8 @@ android {
         applicationId = "com.chatassist.overlay"
         minSdk = 29
         targetSdk = 35
-        versionCode = 63
-        versionName = "0.63.0"
+        versionCode = 64
+        versionName = "0.64.0"
     }
 
     buildTypes {
@@ -45,6 +45,7 @@ android {
 dependencies {
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.core:core-ktx:1.13.1")
+    testImplementation("junit:junit:4.13.2")
 }
 
 // Rename app-debug.apk to app-debug-<versionName>.apk after packaging, so

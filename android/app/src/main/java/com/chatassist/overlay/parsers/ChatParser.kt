@@ -468,11 +468,19 @@ class SnapchatParser : ChatParser("com.snapchat.android") {
 
     override fun parse(root: AccessibilityNodeInfo?): String {
         if (root == null) return ""
+        return parseLeaves(collectRawLeaves(root), extractTitle(root))
+    }
+
+    /**
+     * Pure parse over captured leaves and the header title: no Android screen
+     * needed, so the parser can be tested with recorded fixtures.
+     */
+    fun parseLeaves(rawLeaves: List<Bubble>, rawTitle: String?): String {
         // Contact-name label candidates: the header name, plus its first
         // token ("Rakshaarya" for "Rakshaarya Arya"). Only trustworthy names
         // qualify — a too-short/too-generic title is ignored rather than
         // risk eating real messages.
-        val title = extractTitle(root)?.trim().orEmpty()
+        val title = rawTitle?.trim().orEmpty()
         val titleTokens = title.split(Regex("\\s+")).filter { it.length >= 2 }
         val useLabels = title.contains(" ") || title.length >= 4
         // Names are compared letters-only: Snapchat renders the contact label
@@ -494,7 +502,7 @@ class SnapchatParser : ChatParser("com.snapchat.android") {
         fun speakerOfLabel(text: String): String? =
             if (text == "ME") "USER" else authorOf(text)
 
-        val leaves = collectRawLeaves(root).sortedBy { it.top }.map { it.text }
+        val leaves = rawLeaves.sortedBy { it.top }.map { it.text }
         // (speaker, body) in reading order; quoted bodies carry a "(quoted)"
         // prefix from the logic below.
         val rows = mutableListOf<Pair<String, String>>()

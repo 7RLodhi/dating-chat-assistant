@@ -616,7 +616,13 @@ class OverlayService : Service() {
             // switch, settled screen), Refresh heals it instead of
             // re-showing the previous match's data. Forced: manual Refresh
             // must visibly regenerate, never silently re-serve the cache.
-            ChatBus.requestCapture()
+            // The result is reported so a skipped read is never silent.
+            val captured = ChatBus.requestCapture()
+            Toast.makeText(
+                this,
+                captureReasonText(if (captured) "" else ChatBus.lastSkipReason),
+                Toast.LENGTH_SHORT,
+            ).show()
             refreshChatSection()
             loadSuggestions(force = true)
         }
@@ -1162,6 +1168,45 @@ class OverlayService : Service() {
      * check only for openers that include it, so "Openers" and "Name puns"
      * differ by this flag.
      */
+    /** A chat read longer ago than this is shown as stale (amber), so Refresh is the obvious next step. */
+    private val STALE_AFTER_MS = 3 * 60_000L
+
+    /**
+     * Header line under the panel: who the chat is with, plus when it was
+     * last read from the screen. Amber once the read is older than
+     * [STALE_AFTER_MS], because a stale read can show the wrong speakers or
+     * miss new messages until Refresh re-reads the chat.
+     */
+    private fun renderChatHeader(label: TextView, key: String, snapshot: ChatBus.ChatSnapshot) {
+        val clock = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+            .format(java.util.Date(snapshot.at))
+        val ageMs = System.currentTimeMillis() - snapshot.at
+        val stale = ageMs > STALE_AFTER_MS
+        val ageText = if (ageMs < 60_000L) "just now" else "${ageMs / 60_000L}m ago"
+        label.text = "${ChatBus.labelFor(key, snapshot)}\nread $clock ($ageText)" +
+            if (stale) " — tap Refresh" else ""
+        label.setTextColor(
+            if (stale) getColor(android.R.color.holo_orange_dark)
+            else getColor(android.R.color.darker_gray)
+        )
+    }
+
+    /** What a Refresh that stored nothing should tell the user, in plain words. */
+    private fun captureReasonText(reason: String): String = when (reason) {
+        "no-conversation-window" -> "No chat with a message box is open. Open the chat, then tap Refresh."
+        "not-a-dating-app" -> "Open a supported dating app chat first."
+        "app-disabled" -> "This app is turned off in Apps."
+        "contaminated" -> "The screen was still changing. Tap Refresh again."
+        "no-title" -> "Contact name not readable yet. Scroll to the top of the chat and tap Refresh."
+        "empty-titleless" -> "Nothing readable on screen yet."
+        "list-screen" -> "This screen is a chat list, not a conversation."
+        "debounced", "debounced+retry" -> "Too soon after the last read. Tap Refresh again."
+        "service-not-running" -> "Screen reading is off. Turn it on in setup."
+        "exception" -> "The chat could not be read. See the Capture log."
+        "" -> "Chat re-read."
+        else -> "Could not read this chat ($reason)."
+    }
+
     private fun loadSuggestions(force: Boolean = false, openerMode: Boolean? = null, withName: Boolean = true) {
         if (loadingSuggestions) return
         val panelView = panel ?: return
@@ -1188,7 +1233,7 @@ class OverlayService : Service() {
         // replies to nothing. A known chat title is enough; only a
         // title-less blank means nothing was captured at all.
         val opener = openerMode ?: !hasMatchContent(text)
-        chatLabel.text = ChatBus.labelFor(key, snapshot)
+        renderChatHeader(chatLabel, key, snapshot)
         // Smart refresh: same request as last time → re-render the stored
         // batch instantly instead of burning another API call. Taste, gender
         // and TONE ride the fingerprint (a tone switch must regenerate, not
