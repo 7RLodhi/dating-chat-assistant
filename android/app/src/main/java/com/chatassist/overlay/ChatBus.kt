@@ -165,7 +165,12 @@ object ChatBus {
     }
 
     fun notifyForeground(packageName: String) {
-        foregroundPackage = packageName
+        // Overlay-context windows (our panel, keyboards, system UI) sit on top
+        // of the chat. They must not replace the app the chat belongs to, or
+        // Refresh (which reads this package) would see "not a dating app" the
+        // moment the panel itself takes focus.
+        val own = appContext?.packageName.orEmpty()
+        if (!isOverlayContext(packageName, own)) foregroundPackage = packageName
         appendFgLog("fg=$packageName")
         for (listener in foregroundListeners) {
             runCatching { listener(packageName) }
