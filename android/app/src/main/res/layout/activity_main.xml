@@ -39,7 +39,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:text="No chats captured yet — open a conversation in a supported app and it appears here."
+            android:text="No chats yet — open the bubble on a conversation and it appears here."
             android:textColor="#6B7280"
             android:textSize="13sp" />
 

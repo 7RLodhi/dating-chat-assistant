@@ -359,7 +359,9 @@ class MainActivity : AppCompatActivity() {
      */
     private fun renderMatchList() {
         matchList.removeAllViews()
-        val chats = ChatBus.all()
+        // Only chats the bubble was opened on: captured screens you never
+        // worked on (feeds, settings, friend lists) stay out of the list.
+        val chats = ChatBus.all().filter { it.second.bubbleUsed }
         matchEmptyHint.visibility = if (chats.isEmpty()) View.VISIBLE else View.GONE
         for ((key, snapshot) in chats) {
             matchList.addView(buildMatchCard(key, snapshot))

@@ -36,6 +36,8 @@ object ChatBus {
          * drift if the 30-row window slides past fixed duplicates (accepted).
          */
         val speakerFixes: Map<String, List<String>> = emptyMap(),
+        /** True once the bubble was opened on this chat. Only these appear in the Matches list. */
+        val bubbleUsed: Boolean = false,
     )
 
     private const val MAX_CHATS = 10
@@ -283,6 +285,7 @@ object ChatBus {
             suggestItems = snapshot.suggestItems.ifEmpty { existing?.suggestItems.orEmpty() },
             suggestTones = snapshot.suggestTones.ifEmpty { existing?.suggestTones.orEmpty() },
             speakerFixes = snapshot.speakerFixes.ifEmpty { existing?.speakerFixes.orEmpty() },
+            bubbleUsed = snapshot.bubbleUsed || existing?.bubbleUsed == true,
         )
         snapshots[key] = merged
         while (snapshots.size > MAX_CHATS) {
@@ -354,6 +357,15 @@ object ChatBus {
         }.joinToString("\n")
     }
 
+    /** Marks a chat as worked on with the bubble (panel opened on it). */
+    @Synchronized
+    fun markBubbleUsed(key: String) {
+        val existing = snapshots[key] ?: return
+        if (existing.bubbleUsed) return
+        snapshots[key] = existing.copy(bubbleUsed = true)
+        persistLocked()
+    }
+
     /** Saves a hand-added profile note (latestKey untouched). */
     @Synchronized
     fun updateNote(key: String, note: String) {
@@ -380,7 +392,8 @@ object ChatBus {
                     .put("suggestMood", s.suggestMood)
                     .put("suggestItems", org.json.JSONArray(s.suggestItems))
                     .put("suggestTones", org.json.JSONArray(s.suggestTones))
-                    .put("speakerFixes", JSONObject(s.speakerFixes.mapValues { org.json.JSONArray(it.value) })))
+                    .put("speakerFixes", JSONObject(s.speakerFixes.mapValues { org.json.JSONArray(it.value) }))
+                    .put("bubbleUsed", s.bubbleUsed))
             }
             ctx.getSharedPreferences(PREFS_FILE, Context.MODE_PRIVATE).edit()
                 .putString(KEY_SNAPSHOTS, root.toString()).apply()
@@ -430,6 +443,7 @@ object ChatBus {
                             }
                         }
                     }).orEmpty(),
+                    bubbleUsed = o.optBoolean("bubbleUsed", false),
                 )
             }
             // One-time repair for stores written by older builds: merge keys

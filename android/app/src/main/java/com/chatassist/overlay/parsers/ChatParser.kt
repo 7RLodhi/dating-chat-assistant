@@ -131,6 +131,8 @@ open class ChatParser(val appPackage: String) {
         if (t.split(Regex("\\s+")).size >= 6) return false
         val lower = t.lowercase()
         if (NON_NAME_TITLES.contains(lower)) return false
+        // Relative timestamps as headers ("4m ago", "2 days ago")
+        if (Regex("""\d+\s*[smhdwy]\s*ago""", RegexOption.IGNORE_CASE).matches(t)) return false
         if (NON_NAME_PHRASES.any { lower.contains(it) }) return false
         return true
     }
@@ -251,6 +253,9 @@ open class ChatParser(val appPackage: String) {
             "snapchat", "whatsapp", "instagram", "tinder", "hinge", "bumble",
             "chat", "chats", "camera", "calls", "video call", "voice call",
             "call", "calling", "messages", "message", "online", "offline",
+            // Snapchat settings/friends rows that get mistaken for contacts
+            "email", "username", "phone number", "added me", "add friends",
+            "add friend", "friends", "my friends", "new group", "mentions",
         )
 
         /** Fragments (lowercased) that mark call banners / status lines. */

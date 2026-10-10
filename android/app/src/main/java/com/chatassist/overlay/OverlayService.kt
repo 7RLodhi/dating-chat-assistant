@@ -634,6 +634,8 @@ class OverlayService : Service() {
         syncBubbleVisibility("panel opened")
         loadSuggestions()
         refreshFactsOnOpen()
+        // The Matches list shows only chats the bubble was opened on.
+        ChatBus.markBubbleUsed(ChatBus.latestKey)
         // Every bubble open re-reads the user's own lines; the network is
         // only hit when those lines actually changed.
         ChatStyle.autoRefresh(this)
