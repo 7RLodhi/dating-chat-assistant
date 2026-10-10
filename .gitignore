@@ -11,3 +11,6 @@ npm-debug.log*
 
 .vercel
 .env*
+
+# APKs are published as GitHub Release assets, not committed
+*.apk
