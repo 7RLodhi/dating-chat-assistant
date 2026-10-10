@@ -171,10 +171,8 @@
             android:orientation="vertical" />
     </ScrollView>
 
-    <!-- Footer: two compact buttons + the resize grip on one row, the
-         version line directly beneath both buttons. Everything is sized to
-         fit the 320dp panel (the old single row overflowed and pushed the
-         grip off-screen), and the panel has no bottom padding. -->
+    <!-- Footer: version (inline, left of Learn), Learn, Refresh and the
+         resize grip on one row. Sized to fit the 320dp panel. -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -186,6 +184,15 @@
             android:layout_width="0dp"
             android:layout_height="0dp"
             android:layout_weight="1" />
+
+        <TextView
+            android:id="@+id/versionText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="6dp"
+            android:text="v?"
+            android:textColor="#9CA3AF"
+            android:textSize="11sp" />
 
         <Button
             android:id="@+id/btnLearn"
@@ -217,13 +224,4 @@
             android:textSize="16sp" />
     </LinearLayout>
 
-    <TextView
-        android:id="@+id/versionText"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:gravity="end"
-        android:paddingEnd="30dp"
-        android:text="v?"
-        android:textColor="#9CA3AF"
-        android:textSize="11sp" />
 </LinearLayout>

@@ -122,8 +122,10 @@ class ChatReaderService : AccessibilityService() {
         fun step() {
             if (taken >= steps || stale >= 2) return finish()
             val root = findConversationRoot(fg) ?: return finish()
-            val scroller = findScrollable(root) ?: return finish()
-            scroller.performAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
+            if (!scrollOlder(root)) {
+                ChatBus.noteCaptureSkip("scroll-failed")
+                return finish()
+            }
             taken++
             mainHandler.postDelayed({
                 publishCurrent(fg, force = true)
@@ -135,6 +137,36 @@ class ChatReaderService : AccessibilityService() {
             }, SCROLL_SETTLE_MS)
         }
         step()
+    }
+
+    /**
+     * One upward scroll. Tries the list's own scroll action first (and its
+     * parents, since Snapchat often marks a wrapper as scrollable), then a
+     * short swipe down on the left side of the chat, where the overlay panel
+     * usually isn't. Returns false only when neither could be dispatched.
+     */
+    private fun scrollOlder(root: AccessibilityNodeInfo): Boolean {
+        findScrollable(root)?.let { node ->
+            var cur: AccessibilityNodeInfo? = node
+            var depth = 0
+            while (cur != null && depth < 4) {
+                if (cur.isScrollable && cur.performAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)) return true
+                cur = cur.parent
+                depth++
+            }
+        }
+        if (android.os.Build.VERSION.SDK_INT < 24) return false
+        val b = Rect()
+        root.getBoundsInScreen(b)
+        if (b.height() <= 0) return false
+        val x = b.left + b.width() * 0.25f
+        val path = android.graphics.Path().apply {
+            moveTo(x, b.top + b.height() * 0.3f)
+            lineTo(x, b.top + b.height() * 0.75f)
+        }
+        val stroke = android.accessibilityservice.GestureDescription.StrokeDescription(path, 0, 350)
+        val gesture = android.accessibilityservice.GestureDescription.Builder().addStroke(stroke).build()
+        return dispatchGesture(gesture, null, null)
     }
 
     private fun linesOf(text: String): List<String> =
