@@ -302,6 +302,18 @@ class BumbleParser : ChatParser("com.bumble.app") {
  * leaking as phantom messages. View-once messages are read only while
  * visible on screen.
  */
+/** Regions that can close a "City, Region" header line (Indian states/UTs, common countries). */
+private val LOCATION_REGIONS = listOf(
+    "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh", "Goa", "Gujarat",
+    "Haryana", "Himachal Pradesh", "Jharkhand", "Karnataka", "Kerala", "Madhya Pradesh",
+    "Maharashtra", "Manipur", "Meghalaya", "Mizoram", "Nagaland", "Odisha", "Punjab",
+    "Rajasthan", "Sikkim", "Tamil Nadu", "Telangana", "Tripura", "Uttar Pradesh",
+    "Uttarakhand", "West Bengal", "Delhi", "Chandigarh", "Puducherry", "Jammu and Kashmir",
+    "Ladakh", "Andaman and Nicobar", "Dadra and Nagar Haveli", "Daman and Diu", "Lakshadweep",
+    "India", "USA", "UK", "Canada", "Australia", "UAE", "Pakistan", "Nepal", "Bangladesh",
+    "Sri Lanka", "Singapore", "Dubai",
+).map { Regex.escape(it) }
+
 class SnapchatParser : ChatParser("com.snapchat.android") {
     override fun isListScreen(title: String?, text: String): Boolean {
         // "Let X know when you arrive safely" nudge only exists on the feed.
@@ -381,6 +393,17 @@ class SnapchatParser : ChatParser("com.snapchat.android") {
         // quote-header rule below, which would misread "Opened 16:00" as a
         // "NAME time" header and flip the NEXT line's speaker.)
         Regex("""(?i)^(delivered|opened|received|sent|viewed)\s+\d{1,2}:\d{2}(:\d{2})?(\s?[ap]m)?$"""),
+        // Chat header subtitle chrome, read as messages when the header is in
+        // the captured tree: a relative age ("18h", "3d") alone on a line...
+        Regex("""(?i)^\d{1,3}\s*[smhdwy]$"""),
+        // ...a date divider ("3 OCTOBER", "10 Oct") and the "TODAY" label.
+        // Month names only, so replies like "2 baje" or "5 days" survive.
+        Regex("""(?i)^\d{1,2}\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*$"""),
+        Regex("""(?i)^today$"""),
+        // ...and the "City, State/Country" location line under the contact
+        // name. Only known states, union territories and countries count, so
+        // ordinary texts that happen to contain a comma ("Hi, Sonam") pass.
+        Regex("""^[A-Z][a-z]+(?: [A-Z][a-z]+){0,2}, (?:${LOCATION_REGIONS.joinToString("|")})$"""),
     )
 
     // Feed-row fingerprints. Internal view IDs (avatar_container,
