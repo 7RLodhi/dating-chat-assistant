@@ -440,6 +440,7 @@ class OverlayService : Service() {
         val minH = (160 * density).roundToInt()
         var downX = 0
         var downY = 0
+        var startX = 0
         var startW = 0
         var startH = 0
         handle.setOnTouchListener { _, event ->
@@ -447,13 +448,20 @@ class OverlayService : Service() {
                 MotionEvent.ACTION_DOWN -> {
                     downX = event.rawX.toInt()
                     downY = event.rawY.toInt()
+                    startX = params.x
                     startW = if (params.width > 0) params.width else handle.rootView.width
                     startH = if (params.height > 0) params.height else handle.rootView.height
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
-                    params.width = (startW + (event.rawX.toInt() - downX))
+                    // Bottom-left grip: the LEFT edge follows the finger while
+                    // the RIGHT edge stays put, so the panel grows leftward.
+                    val startRight = startX + startW
+                    val wanted = (startW - (event.rawX.toInt() - downX))
                         .coerceIn(minW, metrics.widthPixels)
+                    val newX = (startRight - wanted).coerceAtLeast(0)
+                    params.x = newX
+                    params.width = (startRight - newX).coerceIn(minW, metrics.widthPixels)
                     params.height = (startH + (event.rawY.toInt() - downY))
                         .coerceIn(minH, metrics.heightPixels)
                     windowManager.updateViewLayout(panel, params)

@@ -171,14 +171,26 @@
             android:orientation="vertical" />
     </ScrollView>
 
-    <!-- Footer: version (inline, left of Learn), Learn, Refresh and the
-         resize grip on one row. Sized to fit the 320dp panel. -->
+    <!-- Footer: resize grip (bottom-left corner), version (inline, left of
+         Learn), Learn and Refresh on one row. Sized to fit the 320dp panel. -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="4dp"
         android:gravity="center_vertical"
         android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/resizeHandle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingStart="2dp"
+            android:paddingTop="8dp"
+            android:paddingEnd="8dp"
+            android:paddingBottom="8dp"
+            android:text="◣"
+            android:textColor="#9CA3AF"
+            android:textSize="16sp" />
 
         <View
             android:layout_width="0dp"
@@ -211,17 +223,6 @@
             android:contentDescription="Refresh"
             android:src="@drawable/ic_refresh" />
 
-        <TextView
-            android:id="@+id/resizeHandle"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:paddingStart="8dp"
-            android:paddingTop="8dp"
-            android:paddingEnd="2dp"
-            android:paddingBottom="8dp"
-            android:text="◢"
-            android:textColor="#9CA3AF"
-            android:textSize="16sp" />
     </LinearLayout>
 
 </LinearLayout>
