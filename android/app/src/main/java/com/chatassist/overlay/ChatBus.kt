@@ -250,14 +250,23 @@ object ChatBus {
         private set
 
     @Synchronized
-    fun publish(key: String, snapshot: ChatSnapshot) {
+    fun publish(key: String, snapshot: ChatSnapshot, touch: Boolean = false) {
         // Keys merge case-insensitively: Snapchat exposes the same chat as
         // "NIDHIII…" and "Nidhiii…" across screens, which used to list twice.
         val oldKey = snapshots.keys.firstOrNull { it.equals(key, ignoreCase = true) }
         val existing = oldKey?.let { snapshots[it] }
         // Ignore duplicate snapshots so we don't spam the backend.
-        // (latestKey untouched: identical text means nothing moved.)
-        if (existing != null && existing.text == snapshot.text) return
+        // (identical text means nothing moved, so no suggestions or learning
+        // are triggered.) The read time is still refreshed: an explicit
+        // Refresh always, automatic reads once the stored time is a minute old.
+        if (existing != null && existing.text == snapshot.text) {
+            if (touch || snapshot.at - existing.at > 60_000L) {
+                snapshots[oldKey!!] = existing.copy(at = snapshot.at)
+                if (touch) latestKey = oldKey
+                persistLocked()
+            }
+            return
+        }
         if (existing != null && existing.text != snapshot.text) {
             // Anti-shrink: mid-transition trees and scrolled slices capture
             // partial slices ("Ok" alone); they must never clobber a fuller

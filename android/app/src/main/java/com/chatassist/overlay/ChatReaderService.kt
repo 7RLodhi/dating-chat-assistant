@@ -456,6 +456,7 @@ class ChatReaderService : AccessibilityService() {
                     text = text,
                     at = System.currentTimeMillis(),
                 ),
+                touch = force,
             )
             return true
         } catch (_: Exception) {
