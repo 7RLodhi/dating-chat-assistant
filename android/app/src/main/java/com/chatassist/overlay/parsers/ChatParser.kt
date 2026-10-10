@@ -475,10 +475,17 @@ class SnapchatParser : ChatParser("com.snapchat.android") {
         val title = extractTitle(root)?.trim().orEmpty()
         val titleTokens = title.split(Regex("\\s+")).filter { it.length >= 2 }
         val useLabels = title.contains(" ") || title.length >= 4
+        // Names are compared letters-only: Snapchat renders the contact label
+        // as "LEENA 👩🏻" while the header reads "Leena 👩🏻" (emoji and spacing
+        // differ), and an exact compare silently failed — every line under
+        // that label then inherited the wrong speaker.
+        fun letters(s: String): String = s.filter { it.isLetterOrDigit() }.lowercase()
+        val titleKey = letters(title)
+        val tokenKeys = titleTokens.map { letters(it) }.filter { it.length >= 2 }
         fun authorOf(name: String): String? =
             if (name.equals("ME", ignoreCase = true)) "USER"
-            else if (useLabels && (name.equals(title, ignoreCase = true) ||
-                    titleTokens.any { tok -> name.equals(tok, ignoreCase = true) })
+            else if (useLabels && letters(name).length >= 2 &&
+                (letters(name) == titleKey || tokenKeys.any { it == letters(name) })
             ) "MATCH"
             else null
         // Speaker labels stay case-SENSITIVE ("ME" only — a real message
