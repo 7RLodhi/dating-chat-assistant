@@ -534,6 +534,10 @@ class SnapchatParser : ChatParser("com.snapchat.android") {
             // a quoted reply) are media chrome, never a message: dropped here,
             // before the quote branch can wrap them as "(quoted) …".
             if (isMediaMarker(text)) {
+                // The envelope IS the quoted bubble when a quote header came
+                // before it: consume that pending quote here, or it leaks onto
+                // the next real message and flips its speaker.
+                quoteAuthor = null
                 i += 1
                 continue
             }
